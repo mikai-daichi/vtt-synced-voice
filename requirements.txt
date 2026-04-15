@@ -1,0 +1,20 @@
+# vtt-synced-voice 動作確認用 requirements
+# Python 3.12.13 / .venv
+# 生成日: 2026-04-15
+
+# === パッケージ本体（editable install） ===
+-e .
+
+# === 直接依存 ===
+numpy>=1.24
+whisperx>=3.1
+
+# === whisperx の実行依存（MLバックエンド） ===
+torch>=2.0
+torchaudio>=2.0
+faster-whisper>=1.0
+transformers>=4.0
+pyannote.audio>=3.0
+
+# === テスト ===
+pytest>=7.0
