@@ -17,12 +17,20 @@ Generate VTT subtitles with timestamps precisely snapped to voice onset using Wh
 
 ## Installation
 
-### 1. Install ffmpeg
+### macOS
 
-**macOS**
+On macOS, only ffmpeg needs to be installed manually. PyTorch and all other dependencies are installed automatically.
+
 ```bash
 brew install ffmpeg
+pip install vtt-synced-voice
 ```
+
+### Windows / Linux
+
+On Windows and Linux, if you have an NVIDIA GPU, install the CUDA build of PyTorch **before** installing vtt-synced-voice. pip's dependency resolution cannot select the correct CUDA build automatically.
+
+**1. Install ffmpeg**
 
 **Windows**
 ```powershell
@@ -34,14 +42,9 @@ winget install ffmpeg
 sudo apt install ffmpeg
 ```
 
-### 2. Install PyTorch
+**2. Install PyTorch (GPU only — skip if using CPU)**
 
-WhisperX runs on PyTorch. GPU (CUDA) is significantly faster than CPU for transcription (roughly 10–20x). Install the build that matches your environment.
-
-**macOS** — CPU only (no CUDA support on macOS)
-```bash
-pip install torch torchaudio
-```
+WhisperX runs on PyTorch. GPU (CUDA) is roughly 10–20x faster than CPU for transcription.
 
 **Windows — CUDA 12.8** (recommended for RTX 30xx / 40xx and newer)
 ```powershell
@@ -51,11 +54,6 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 **Windows — CUDA 11.8** (for older GPUs such as GTX 10xx / 20xx)
 ```powershell
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-```
-
-**Windows — CPU only** (no NVIDIA GPU)
-```powershell
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
 **Linux — CUDA 12.8** (recommended for RTX 30xx / 40xx and newer)
@@ -68,15 +66,10 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
-**Linux — CPU only** (no NVIDIA GPU)
-```bash
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-```
-
-> To check your CUDA version: `nvidia-smi` (Windows/Linux). If you don't have an NVIDIA GPU, use the CPU build.
+> To check your CUDA version: `nvidia-smi`. If you don't have an NVIDIA GPU, skip this step.
 > For the full list of builds, see the [PyTorch installation guide](https://pytorch.org/get-started/locally/).
 
-### 3. Install vtt-synced-voice
+**3. Install vtt-synced-voice**
 
 ```bash
 pip install vtt-synced-voice

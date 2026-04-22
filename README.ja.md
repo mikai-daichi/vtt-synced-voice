@@ -15,16 +15,20 @@
 
 ## インストール
 
+### macOS
+
+macOSでは ffmpeg のみ手動でインストールが必要です。PyTorch を含む全依存パッケージは自動でインストールされます。
+
 ```bash
+brew install ffmpeg
 pip install vtt-synced-voice
 ```
 
-### 1. ffmpeg をインストール
+### Windows / Linux
 
-**macOS**
-```bash
-brew install ffmpeg
-```
+Windows・Linux で NVIDIA GPU を使う場合は、vtt-synced-voice のインストール前に PyTorch の CUDA ビルドを先にインストールしてください。pip の依存解決では正しい CUDA ビルドを自動選択できません。
+
+**1. ffmpeg をインストール**
 
 **Windows**
 ```powershell
@@ -36,14 +40,9 @@ winget install ffmpeg
 sudo apt install ffmpeg
 ```
 
-### 2. PyTorch をインストール
+**2. PyTorch をインストール（GPU使用時のみ・CPU環境はスキップ）**
 
-WhisperXはPyTorch上で動作します。GPU（CUDA）はCPUに比べて書き起こし速度が大幅に速くなります（目安として10〜20倍）。使用環境に合ったビルドをインストールしてください。
-
-**macOS** — CPUのみ（macOSはCUDA非対応）
-```bash
-pip install torch torchaudio
-```
+WhisperX は PyTorch 上で動作します。GPU（CUDA）はCPUに比べて書き起こし速度が目安10〜20倍速くなります。
 
 **Windows — CUDA 12.8**（RTX 30xx / 40xx以降・推奨）
 ```powershell
@@ -53,11 +52,6 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 **Windows — CUDA 11.8**（GTX 10xx / 20xx など旧世代GPU）
 ```powershell
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-```
-
-**Windows — CPUのみ**（NVIDIAのGPUがない場合）
-```powershell
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
 **Linux — CUDA 12.8**（RTX 30xx / 40xx以降・推奨）
@@ -70,15 +64,10 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
-**Linux — CPUのみ**（NVIDIAのGPUがない場合）
-```bash
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-```
-
-> CUDAバージョンの確認方法: `nvidia-smi`（Windows/Linux）。NVIDIAのGPUがない場合はCPUビルドを使用してください。
+> CUDAバージョンの確認: `nvidia-smi`。NVIDIA GPU がない場合はこの手順をスキップしてください。
 > ビルド一覧は [PyTorch公式インストールガイド](https://pytorch.org/get-started/locally/) を参照してください。
 
-### 3. vtt-synced-voice をインストール
+**3. vtt-synced-voice をインストール**
 
 ```bash
 pip install vtt-synced-voice
