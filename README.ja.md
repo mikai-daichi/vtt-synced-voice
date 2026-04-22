@@ -11,6 +11,7 @@
 - 文単位のキューマージ：過分割されたキューを自然な文単位に結合
   - 日本語：Janome 形態素解析で文末表現（です・ます・ました・くださいなど）を検出
   - その他の言語：ピリオド・感嘆符・疑問符を文末として検出（略語・省略記号は除外）
+- ボイスオンリー出力（`voice_only=True`）：タイムスタンプなしの `.txt` を出力（カット編集済み動画のテロップ用）
 
 ## インストール
 
@@ -98,6 +99,7 @@ transcribe(
     margin_after=0.0,         # 終了時刻を延ばす秒数
     silence_threshold=0.001,  # ピーク正規化後のRMS閾値
     merge_sentences=True,     # 文単位にキューをマージする（デフォルト: True）
+    voice_only=False,          # タイムスタンプなしの.txtを出力する（デフォルト: False）
     verbose=True,
 )
 ```
@@ -120,6 +122,27 @@ write_vtt(merged, "output_merged.vtt")
 - **その他の言語**：`.` / `!` / `?` を文末として検出します。`Mr.`・`Dr.`・`U.S.`・`e.g.`・`etc.`・`...` などの略語・省略記号は誤検出を防ぐため除外します。
 
 マージを無効にして WhisperX のアライメント結果をそのまま受け取るには `merge_sentences=False` を指定してください。
+
+### `voice_only` について
+
+`True` の場合、VTT の代わりに `.txt` ファイルを出力します。タイムスタンプは省略され、各行末尾の句点（`。` `！` `？` `.` `!` `?`）も除去されます。
+
+**カット編集済み動画にテロップを付けたい場合**のワークフロー：
+
+```
+カット編集済み音声 → vtt-synced-voice (voice_only=True) → .txt → テロップツールに貼り付け
+```
+
+既存の VTT ファイルをテキストに変換することもできます：
+
+```python
+from vtt_synced_voice import read_vtt, write_txt
+
+cues = read_vtt("input.vtt")
+write_txt(cues, "output.txt")
+```
+
+> `voice_only=True` を指定すると、`output_file` の拡張子に関わらず自動的に `.txt` として書き出されます。
 
 ### 文単位マージの言語対応状況
 

@@ -13,6 +13,7 @@ Generate VTT subtitles with timestamps precisely snapped to voice onset using Wh
 - Sentence-level cue merging: over-split cues are merged into natural sentence units
   - Japanese: morphological analysis (Janome) detects sentence-ending verb forms
   - Other languages: period / exclamation mark / question mark detection (with abbreviation exclusions)
+- Voice-only output (`voice_only=True`): plain `.txt` without timestamps, for adding subtitles to cut-edited video
 
 ## Installation
 
@@ -96,6 +97,7 @@ transcribe(
     margin_after=0.0,         # seconds to extend end
     silence_threshold=0.001,  # RMS threshold after peak normalization
     merge_sentences=True,     # merge over-split cues into sentence units (default: True)
+    voice_only=False,          # output plain .txt without timestamps (default: False)
     verbose=True,
 )
 ```
@@ -149,6 +151,27 @@ When `True` (default), over-split cues produced by WhisperX are merged into natu
 - **Other languages**: Detects `.` / `!` / `?` as sentence boundaries. Common abbreviations (`Mr.`, `Dr.`, `U.S.`, `e.g.`, `etc.`, `...`) are excluded to avoid false splits.
 
 Set `merge_sentences=False` to disable merging and receive the raw WhisperX-aligned cues.
+
+### `voice_only`
+
+When `True`, outputs a plain `.txt` file instead of a `.vtt` file. Timestamps are omitted and trailing punctuation (`。`, `！`, `？`, `.`, `!`, `?`) is stripped from each line.
+
+This is intended for **cut-edited video** where VTT timestamps are meaningless. The typical workflow:
+
+```
+Cut-edited audio → vtt-synced-voice (voice_only=True) → .txt → paste into subtitle tool
+```
+
+You can also convert an existing VTT file directly:
+
+```python
+from vtt_synced_voice import read_vtt, write_txt
+
+cues = read_vtt("input.vtt")
+write_txt(cues, "output.txt")
+```
+
+> Note: `voice_only=True` automatically changes the output file extension to `.txt` regardless of the `output_file` argument.
 
 ### Language support for sentence merging
 
