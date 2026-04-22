@@ -75,6 +75,12 @@ def _flush(buffer: list[VttCue], index: int, join_sep: str) -> VttCue:
     )
 
 
+_KEREDO_SURFACES = frozenset({"けど", "けども", "が"})
+_KARA_NODE_SURFACES = frozenset({"から", "ので"})
+_SENTENCE_END_CONJ = frozenset({"なので", "だから", "ですから"})
+_KEREDO_CONJ = frozenset({"けれど", "けれども"})
+
+
 def _make_ja_detector():
     """Janome を使った日本語文末判定クロージャを返す。"""
     from janome.tokenizer import Tokenizer
@@ -106,6 +112,29 @@ def _make_ja_detector():
         if pos0 == "感動詞":
             return True
 
+        # 終助詞（よ/ね/な/わ/ぞ/ぜ/さ/か/かな/っけ/もん/じゃん 等）
+        if pos0 == "助詞" and pos1 == "終助詞":
+            return True
+
+        # 接続助詞止め・けど系（けど/けども/が 等）
+        # 格助詞の「が」（私が）とはJanomeが区別するため誤検出なし
+        if pos0 == "助詞" and pos1 == "接続助詞" and last.surface in _KEREDO_SURFACES:
+            return True
+
+        # 接続詞・けれど系（けれど/けれども）
+        if pos0 == "接続詞" and last.surface in _KEREDO_CONJ:
+            return True
+
+        # 接続助詞止め・から/ので系
+        # 格助詞の「から」（東京から）とはJanomeが区別するため誤検出なし
+        if pos0 == "助詞" and pos1 == "接続助詞" and last.surface in _KARA_NODE_SURFACES:
+            return True
+
+        # 接続詞止め（なので/だから/ですから）
+        # 「次に」「また」「そして」など文頭に来る接続詞は除外
+        if pos0 == "接続詞" and last.surface in _SENTENCE_END_CONJ:
+            return True
+
         return False
 
     return is_end
@@ -117,6 +146,9 @@ def _contains_sentence_end(text: str) -> bool:
     if len(stripped) < 2:
         return False
     interior = stripped[:-1]
+    # 日本語句点
+    if "。" in interior:
+        return True
     for ch in "!?":
         if ch in interior:
             return True
