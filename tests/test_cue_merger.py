@@ -89,6 +89,144 @@ class TestMergeCuesJapanese:
         result = merge_cues(cues, language="ja")
         assert [c.index for c in result] == list(range(len(result)))
 
+    # --- 終助詞 ---
+
+    def test_yo_is_sentence_end(self):
+        """「よ」終助詞は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "本当だよ"),
+            make_cue(1, 1.5, 2.5, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_ne_is_sentence_end(self):
+        """「ね」終助詞は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "いいですね"),
+            make_cue(1, 1.5, 2.5, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_na_is_sentence_end(self):
+        """「な」終助詞は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "難しいな"),
+            make_cue(1, 1.5, 2.5, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_jan_is_sentence_end(self):
+        """「じゃん」終助詞は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "いいじゃん"),
+            make_cue(1, 1.5, 2.5, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_final_particle_merges_before_split(self):
+        """終助詞が文末にないキューはマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 0.5, "アイデアを出す"),
+            make_cue(1, 0.6, 1.5, "タイプの人なんだよな"),
+            make_cue(2, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+        assert result[0].text == "アイデアを出すタイプの人なんだよな"
+
+    # --- 接続助詞止め・けど系 ---
+
+    def test_kedo_is_sentence_end(self):
+        """「けど」接続助詞止めは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "難しいんですけど"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_ga_setsuzoku_is_sentence_end(self):
+        """接続助詞の「が」は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "そうなんですが"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_ga_kakujoshi_not_sentence_end(self):
+        """格助詞の「が」（私が）は文末と判定しない。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "私が"),
+            make_cue(1, 1.2, 2.5, "説明します"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 1
+
+    # --- 接続助詞止め・から/ので系 ---
+
+    def test_kara_setsuzoku_is_sentence_end(self):
+        """接続助詞の「から」（理由）は文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "忙しいから"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_kara_kakujoshi_not_sentence_end(self):
+        """格助詞の「から」（東京から）は文末と判定しない。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "東京から"),
+            make_cue(1, 1.2, 2.5, "来ました"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 1
+
+    def test_node_is_sentence_end(self):
+        """「ので」接続助詞止めは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "急ぐので"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    # --- 接続詞止め ---
+
+    def test_dakara_is_sentence_end(self):
+        """「だから」接続詞止めは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "難しいんだ、だから"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_tsugini_not_sentence_end(self):
+        """「次に」のような文頭接続詞は文末と判定しない。"""
+        cues = [
+            make_cue(0, 0.0, 0.5, "次に"),
+            make_cue(1, 0.6, 1.5, "説明します"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 1
+
+    # --- 句点内部検出 ---
+
+    def test_interior_kuten_splits(self):
+        """キュー内部に句点（。）があれば分割される。"""
+        cues = [
+            make_cue(0, 0.0, 2.0, "完了です。次に進みますが"),
+            make_cue(1, 2.5, 3.5, "準備してください"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
 
 # ---------------------------------------------------------------------------
 # 英語マージ
