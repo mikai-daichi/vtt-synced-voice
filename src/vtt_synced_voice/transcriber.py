@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from .cue_builder import build_cues_from_segments
+from .cue_merger import merge_cues
 from .vtt_io import VttCue, format_timestamp, write_vtt
 
 SAMPLE_RATE              = 16000      # Hz、モノラル
@@ -23,6 +24,7 @@ def transcribe(
     margin_after: float = 0.0,
     silence_threshold: float = 0.001,
     max_gap_seconds: float = WHISPERX_MAX_GAP_SECONDS,
+    merge_sentences: bool = True,
     verbose: bool = False,
     dry_run: bool = False,
 ) -> list[VttCue]:
@@ -40,6 +42,7 @@ def transcribe(
                            完全無音≈0.0、発話≈0.05〜1.0が目安。
                            録音環境によって異なるためverbose=Trueで確認して調整
         max_gap_seconds: 文分割の無音ギャップ閾値（秒）
+        merge_sentences: Trueなら形態素解析/句読点で文単位にキューをマージする
         verbose: Trueなら各キューのタイムスタンプ補正結果を表示
         dry_run: Trueならファイルを書き出さずVttCueリストのみ返す
 
@@ -84,10 +87,17 @@ def transcribe(
             print("VTTキュー生成中...")
         cues, onset_debug = build_cues_from_segments(
             segments, max_gap_seconds, audio_normalized, SAMPLE_RATE,
-            margin_before, margin_after, silence_threshold,
+            margin_before, margin_after, silence_threshold, language,
         )
         if verbose:
             print(f"  {len(cues)} キュー生成完了")
+
+        if merge_sentences:
+            if verbose:
+                print("文単位マージ中...")
+            cues = merge_cues(cues, language)
+            if verbose:
+                print(f"  マージ後: {len(cues)} キュー")
 
         if verbose:
             _print_verbose(cues, onset_debug, segments, silence_threshold)

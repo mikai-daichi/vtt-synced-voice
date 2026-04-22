@@ -8,6 +8,7 @@
 # === 直接依存 ===
 numpy>=1.24
 whisperx>=3.1
+janome>=0.5
 
 # === whisperx の実行依存（MLバックエンド） ===
 torch>=2.0

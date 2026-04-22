@@ -10,6 +10,9 @@ Generate VTT subtitles with timestamps precisely snapped to voice onset using Wh
 - FCP-style peak normalization for recording-level-independent silence detection
 - Bidirectional onset detection: backward scan when CTC start is inside voice, forward scan when in silence
 - Guaranteed silence gap between cues (100ms minimum)
+- Sentence-level cue merging: over-split cues are merged into natural sentence units
+  - Japanese: morphological analysis (Janome) detects sentence-ending verb forms
+  - Other languages: period / exclamation mark / question mark detection (with abbreviation exclusions)
 
 ## Installation
 
@@ -86,12 +89,13 @@ from vtt_synced_voice import transcribe
 transcribe(
     audio_file="sample.m4a",
     output_file="output.vtt",
-    language="ja",           # "ja" / "en" / etc.
-    model="large-v2",        # "small" / "medium" / "large-v2"
-    device="cpu",            # "cpu" / "cuda"
-    margin_before=0.066,     # seconds to shift start earlier after onset detection
-    margin_after=0.0,        # seconds to extend end
-    silence_threshold=0.001, # RMS threshold after peak normalization
+    language="ja",            # "ja" / "en" / etc.
+    model="large-v2",         # "small" / "medium" / "large-v2"
+    device="cpu",             # "cpu" / "cuda"
+    margin_before=0.066,      # seconds to shift start earlier after onset detection
+    margin_after=0.0,         # seconds to extend end
+    silence_threshold=0.001,  # RMS threshold after peak normalization
+    merge_sentences=True,     # merge over-split cues into sentence units (default: True)
     verbose=True,
 )
 ```
@@ -102,12 +106,49 @@ After peak normalization, complete silence ≈ 0.0 and voiced speech ≈ 0.05–
 The default `0.001` works well for clean recordings with no background noise.
 Use `verbose=True` to inspect onset detection results and adjust if needed.
 
+You can also apply sentence merging to an existing VTT file:
+
+```python
+from vtt_synced_voice import read_vtt, merge_cues, write_vtt
+
+cues = read_vtt("input.vtt")
+merged = merge_cues(cues, language="ja")
+write_vtt(merged, "output_merged.vtt")
+```
+
+### `merge_sentences`
+
+When `True` (default), over-split cues produced by WhisperX are merged into natural sentence units after transcription:
+
+- **Japanese (`language="ja"`)**: Uses Janome morphological analysis to detect sentence-ending forms (`です`, `ます`, `ました`, `ください`, etc.). Adjunctive `た` (e.g. `作成された`) is correctly excluded.
+- **Other languages**: Detects `.` / `!` / `?` as sentence boundaries. Common abbreviations (`Mr.`, `Dr.`, `U.S.`, `e.g.`, `etc.`, `...`) are excluded to avoid false splits.
+
+Set `merge_sentences=False` to disable merging and receive the raw WhisperX-aligned cues.
+
+### Language support for sentence merging
+
+| Language | Status | Notes |
+|---|---|---|
+| Japanese | Supported | Janome morphological analysis |
+| English | Supported | Punctuation-based (`.` `!` `?`) |
+| French | Supported | Punctuation-based |
+| German | Supported | Punctuation-based |
+| Spanish | Supported | Punctuation-based (sentence-ending `!` `?` only; leading `¡` `¿` are ignored) |
+| Italian | Supported | Punctuation-based |
+| Portuguese | Supported | Punctuation-based |
+| Dutch | Supported | Punctuation-based |
+| Other Latin-script languages | Likely supported | Punctuation-based |
+| Chinese (Simplified / Traditional) | Planned | Uses `。` as sentence terminator — contributions welcome |
+| Korean | Planned | Mixed punctuation conventions — contributions welcome |
+| Arabic, Hebrew, Thai, etc. | Not supported | Different punctuation systems |
+
 ## Requirements
 
 - Python 3.10+
 - ffmpeg (system)
 - numpy
 - whisperx
+- janome
 
 ---
 
@@ -153,9 +194,10 @@ Output is written to `vtt_output/test_package.vtt`.
 
 ```
 src/vtt_synced_voice/
-├── __init__.py       # exports transcribe()
+├── __init__.py       # exports transcribe(), merge_cues()
 ├── transcriber.py    # transcribe() entry point, ffmpeg conversion, WhisperX calls
 ├── onset.py          # find_onset() — bidirectional voice onset detection
 ├── cue_builder.py    # build_cues_from_segments() — WhisperX result → VttCue
+├── cue_merger.py     # merge_cues() — sentence-level cue merging (Japanese / other)
 └── vtt_io.py         # VttCue dataclass, read_vtt(), write_vtt(), format_timestamp()
 ```

@@ -8,6 +8,9 @@
 - FCPスタイルのピーク正規化により録音レベルに依存しない無音判定を実現
 - 双方向onsetスキャン：CTC startが有音区間内なら後退、無音区間なら前進
 - キュー間に最低100msの無音を保証
+- 文単位のキューマージ：過分割されたキューを自然な文単位に結合
+  - 日本語：Janome 形態素解析で文末表現（です・ます・ました・くださいなど）を検出
+  - その他の言語：ピリオド・感嘆符・疑問符を文末として検出（略語・省略記号は除外）
 
 ## インストール
 
@@ -88,15 +91,52 @@ from vtt_synced_voice import transcribe
 transcribe(
     audio_file="sample.m4a",
     output_file="output.vtt",
-    language="ja",           # "ja" / "en" など
-    model="large-v2",        # "small" / "medium" / "large-v2"
-    device="cpu",            # "cpu" / "cuda"
-    margin_before=0.066,     # onset検出後、さらに早める秒数（デフォルト: 30fps×2フレーム）
-    margin_after=0.0,        # 終了時刻を延ばす秒数
-    silence_threshold=0.001, # ピーク正規化後のRMS閾値
+    language="ja",            # "ja" / "en" など
+    model="large-v2",         # "small" / "medium" / "large-v2"
+    device="cpu",             # "cpu" / "cuda"
+    margin_before=0.066,      # onset検出後、さらに早める秒数（デフォルト: 30fps×2フレーム）
+    margin_after=0.0,         # 終了時刻を延ばす秒数
+    silence_threshold=0.001,  # ピーク正規化後のRMS閾値
+    merge_sentences=True,     # 文単位にキューをマージする（デフォルト: True）
     verbose=True,
 )
 ```
+
+既存の VTT ファイルに対して後からマージを適用することもできます：
+
+```python
+from vtt_synced_voice import read_vtt, merge_cues, write_vtt
+
+cues = read_vtt("input.vtt")
+merged = merge_cues(cues, language="ja")
+write_vtt(merged, "output_merged.vtt")
+```
+
+### `merge_sentences` について
+
+`True`（デフォルト）の場合、WhisperX が生成した過分割キューを書き起こし後に文単位へマージします：
+
+- **日本語（`language="ja"`）**：Janome 形態素解析で文末品詞を判定します。`です`・`ます`・`ました`・`ください` などを文末として検出し、`作成された` のような連体修飾の `た` は除外します。
+- **その他の言語**：`.` / `!` / `?` を文末として検出します。`Mr.`・`Dr.`・`U.S.`・`e.g.`・`etc.`・`...` などの略語・省略記号は誤検出を防ぐため除外します。
+
+マージを無効にして WhisperX のアライメント結果をそのまま受け取るには `merge_sentences=False` を指定してください。
+
+### 文単位マージの言語対応状況
+
+| 言語 | 対応状況 | 備考 |
+|---|---|---|
+| 日本語 | 対応済み | Janome 形態素解析 |
+| 英語 | 対応済み | 句読点ベース（`.` `!` `?`） |
+| フランス語 | 対応済み | 句読点ベース |
+| ドイツ語 | 対応済み | 句読点ベース |
+| スペイン語 | 対応済み | 句読点ベース（文末の `!` `?` のみ検出、文頭の `¡` `¿` は無視） |
+| イタリア語 | 対応済み | 句読点ベース |
+| ポルトガル語 | 対応済み | 句読点ベース |
+| オランダ語 | 対応済み | 句読点ベース |
+| その他ラテン文字系言語 | おそらく対応 | 句読点ベース |
+| 中国語（簡体・繁体） | 今後の予定 | 句点が `。` — コントリビューション歓迎 |
+| 韓国語 | 今後の予定 | 句読点の慣習が混在 — コントリビューション歓迎 |
+| アラビア語・ヘブライ語・タイ語など | 未対応 | 句読点体系が異なる |
 
 ### `silence_threshold` について
 
@@ -110,6 +150,7 @@ transcribe(
 - ffmpeg（システムインストール必須）
 - numpy
 - whisperx
+- janome
 
 ---
 
@@ -155,9 +196,10 @@ python test_run.py
 
 ```
 src/vtt_synced_voice/
-├── __init__.py       # transcribe() を公開APIとしてエクスポート
+├── __init__.py       # transcribe()・merge_cues() を公開APIとしてエクスポート
 ├── transcriber.py    # transcribe() エントリポイント、ffmpeg変換、WhisperX呼び出し
 ├── onset.py          # find_onset() — 双方向voice onset検出
 ├── cue_builder.py    # build_cues_from_segments() — WhisperX結果 → VttCue変換
+├── cue_merger.py     # merge_cues() — 文単位キューマージ（日本語・その他言語対応）
 └── vtt_io.py         # VttCue dataclass、read_vtt()、write_vtt()、format_timestamp()
 ```

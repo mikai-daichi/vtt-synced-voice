@@ -18,6 +18,7 @@ def build_cues_from_segments(
     margin_before: float = 0.0,
     margin_after: float = 0.0,
     silence_threshold: float = 0.001,
+    language: str = "ja",
 ) -> tuple[list[VttCue], list[dict]]:
     """WhisperXのsegments（単語タイムスタンプ付き）をVttCueリストに変換する。
 
@@ -33,6 +34,9 @@ def build_cues_from_segments(
         (cues, onset_debug_list)
         onset_debug_list: [{"index": int, "ctc": float, "onset": float, "note": str}, ...]
     """
+    # 日本語はスペースなし結合、その他は単語間にスペースを挿入
+    word_sep = "" if language == "ja" else " "
+
     cues: list[VttCue] = []
     onset_debug: list[dict] = []
     index = 0
@@ -74,7 +78,7 @@ def build_cues_from_segments(
                 text_parts.pop(0)
             if not words_clean:
                 return
-            text = "".join(text_parts).strip()
+            text = word_sep.join(text_parts).strip()
             if not text:
                 return
             ctc_start = float(words_clean[0]["start"])
