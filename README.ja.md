@@ -205,7 +205,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-`vtt_io`・`onset`・`cue_builder` モジュールをカバーする33本のテストが含まれます。
+`vtt_io`・`onset`・`cue_builder`・`cue_merger` モジュールをカバーする59本のテストが含まれます。
 
 ### ローカル音声ファイルでの手動テスト
 

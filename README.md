@@ -203,7 +203,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-33 tests covering `vtt_io`, `onset`, and `cue_builder` modules.
+59 tests covering `vtt_io`, `onset`, `cue_builder`, and `cue_merger` modules.
 
 ### Manual test with a local audio file
 
