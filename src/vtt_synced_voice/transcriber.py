@@ -8,7 +8,7 @@ import numpy as np
 
 from .cue_builder import build_cues_from_segments
 from .cue_merger import merge_cues
-from .vtt_io import VttCue, format_timestamp, write_vtt
+from .vtt_io import VttCue, format_timestamp, write_vtt, write_txt
 
 SAMPLE_RATE              = 16000      # Hz、モノラル
 WHISPERX_MAX_GAP_SECONDS = 0.4        # 文分割の無音ギャップ閾値（秒）
@@ -25,6 +25,7 @@ def transcribe(
     silence_threshold: float = 0.001,
     max_gap_seconds: float = WHISPERX_MAX_GAP_SECONDS,
     merge_sentences: bool = True,
+    voice_only: bool = False,
     verbose: bool = False,
     dry_run: bool = False,
 ) -> list[VttCue]:
@@ -43,6 +44,7 @@ def transcribe(
                            録音環境によって異なるためverbose=Trueで確認して調整
         max_gap_seconds: 文分割の無音ギャップ閾値（秒）
         merge_sentences: Trueなら形態素解析/句読点で文単位にキューをマージする
+        voice_only: Trueならタイムスタンプなしの.txtファイルを書き出す（output_fileの拡張子は無視）
         verbose: Trueなら各キューのタイムスタンプ補正結果を表示
         dry_run: Trueならファイルを書き出さずVttCueリストのみ返す
 
@@ -103,9 +105,15 @@ def transcribe(
             _print_verbose(cues, onset_debug, segments, silence_threshold)
 
         if not dry_run:
-            write_vtt(cues, output_file)
-            if verbose:
-                print(f"\n出力完了: {output_file}")
+            if voice_only:
+                txt_path = str(Path(output_file).with_suffix(".txt"))
+                write_txt(cues, txt_path)
+                if verbose:
+                    print(f"\n出力完了: {txt_path}")
+            else:
+                write_vtt(cues, output_file)
+                if verbose:
+                    print(f"\n出力完了: {output_file}")
         elif verbose:
             print("\n[DRY RUN] ファイルへの書き出しをスキップしました")
 

@@ -1,6 +1,6 @@
 from .transcriber import transcribe
 from .cue_merger import merge_cues
-from .vtt_io import VttCue, read_vtt, write_vtt, format_timestamp
+from .vtt_io import VttCue, read_vtt, write_vtt, write_txt, format_timestamp
 
 __all__ = [
     "transcribe",
@@ -8,5 +8,6 @@ __all__ = [
     "VttCue",
     "read_vtt",
     "write_vtt",
+    "write_txt",
     "format_timestamp",
 ]

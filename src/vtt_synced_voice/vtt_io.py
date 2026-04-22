@@ -90,3 +90,13 @@ def write_vtt(cues: list[VttCue], path: str) -> None:
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+_TRAILING_PUNCT = "。．！？!?"
+
+
+def write_txt(cues: list[VttCue], path: str) -> None:
+    """VttCueリストをタイムスタンプなし・句点なしのテキストで書き出す。"""
+    lines = [cue.text.rstrip(_TRAILING_PUNCT) for cue in cues]
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
