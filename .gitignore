@@ -22,3 +22,6 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+
+# Local test script (copy from test_run.py.example and edit)
+test_run.py

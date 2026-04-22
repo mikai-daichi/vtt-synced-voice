@@ -1,0 +1,22 @@
+"""手動テスト用スクリプト。
+vtt_synced_voice パッケージの動作確認に使用する。
+
+使い方:
+    cp test_run.py.example test_run.py
+    # test_run.py を編集して audio_file / output_file を設定
+    python test_run.py
+"""
+from vtt_synced_voice import transcribe
+
+transcribe(
+    audio_file="audio_input/sample.m4a",  # 入力音声ファイルのパスを変更
+    output_file="vtt_output/sample.vtt",  # 出力VTTファイルのパスを変更
+    language="ja",            # "ja" / "en" など
+    model="large-v2",         # "small" / "medium" / "large-v2"
+    device="cpu",             # "cpu" / "cuda"
+    margin_before=0.066,
+    margin_after=0.0,
+    silence_threshold=0.001,
+    verbose=True,
+    dry_run=False,
+)
