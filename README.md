@@ -100,6 +100,17 @@ transcribe(
 )
 ```
 
+### `max_gap_seconds`
+
+Controls how finely the audio is split into cues before sentence merging. When the silence gap between two words exceeds this value, a new cue begins.
+
+- **Default**: `0.4` seconds
+- **Slow speaker / many pauses**: increase (e.g. `0.4`–`0.5`)
+- **Fast speaker / machine-gun delivery**: decrease (e.g. `0.1`–`0.2`)
+- **Recommended range**: `0.01`–`0.5`
+
+After splitting, `merge_sentences=True` merges the resulting cues back into natural sentence units, so a smaller `max_gap_seconds` produces more fine-grained intermediate cues that are then merged — it does not make the final output more fragmented.
+
 ### Intended use: raw audio before cut editing
 
 This package is designed to be applied to **raw, unedited audio** before cut editing in Final Cut Pro:
