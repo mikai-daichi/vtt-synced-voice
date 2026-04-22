@@ -100,6 +100,20 @@ transcribe(
 )
 ```
 
+### Intended use: raw audio before cut editing
+
+This package is designed to be applied to **raw, unedited audio** before cut editing in Final Cut Pro:
+
+```
+Raw audio → vtt-synced-voice → VTT → Import into FCP → Cut edit using VTT timestamps
+```
+
+**Do not apply to audio that has already been cut-edited.** Cut-edited audio has had silence removed between sentences, which breaks two core assumptions:
+
+1. **Cue splitting by gap**: The algorithm splits cues where silence gaps exceed `max_gap_seconds` (default 0.4s). In cut-edited audio, inter-sentence silences have been removed, so words from different sentences appear adjacent. The gap threshold finds no boundaries and merges unrelated sentences into a single cue.
+
+2. **Voice onset detection**: `find_onset()` scans backward from the CTC timestamp to locate the silence→voice boundary. In cut-edited audio, that silence no longer exists, so the scan finds no boundary and onset detection loses its accuracy.
+
 ### `silence_threshold`
 
 After peak normalization, complete silence ≈ 0.0 and voiced speech ≈ 0.05–1.0.
