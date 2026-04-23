@@ -140,20 +140,26 @@ def _split_by_natural_boundary(
     target_chars = total_chars // 2
 
     # 区切り候補を収集（句点・読点・終助詞直後）
-    candidates: list[int] = []
+    # 句点（。！？）と読点（、）を分けて管理し、句点を優先する
+    strong: list[int] = []  # 句点・感嘆符・疑問符
+    weak: list[int] = []    # 読点・終助詞直後
     for m in _JA_SPLIT_CHARS.finditer(text):
         pos = m.end()
         if 0 < pos < len(text):
-            candidates.append(pos)
+            if text[pos - 1] in "。！？":
+                strong.append(pos)
+            else:
+                weak.append(pos)
 
-    if not candidates:
+    if not strong and not weak:
         # 区切りが見つからない場合は元キュー境界の中央で分割
         mid_idx = len(source_cues) // 2
         split_char_pos = cumulative[mid_idx - 1]
-        candidates = [split_char_pos]
+        weak = [split_char_pos]
 
-    # target_chars に最も近い候補を選ぶ
-    best_pos = min(candidates, key=lambda p: abs(p - target_chars))
+    # 句点があれば最寄りの句点を選ぶ、なければ中央に最も近い読点を選ぶ
+    pool = strong if strong else weak
+    best_pos = min(pool, key=lambda p: abs(p - target_chars))
 
     # best_pos が属する元キューを特定してタイムスタンプを決める
     split_source_idx = 0
@@ -180,7 +186,20 @@ def _split_by_natural_boundary(
         return [cue]
 
     source_a = source_cues[:split_source_idx + 1]
-    source_b = source_cues[split_source_idx + 1:] or [source_cues[-1]]
+    source_b = source_cues[split_source_idx + 1:]
+    if not source_b:
+        # 分割点が最後の元キュー内に収まり、text_b に割り当てる元キューがない
+        # タイムスタンプが重複するため分割せずそのまま返す
+        cue = VttCue(
+            index=0,
+            start=source_cues[0].start,
+            end=source_cues[-1].end,
+            text=text,
+            original_start=source_cues[0].original_start,
+            original_end=source_cues[-1].original_end,
+        )
+        cue._source_cues = source_cues
+        return [cue]
 
     # 再帰的に分割（まだ長い場合）
     parts_a = _split_by_natural_boundary(text_a, source_a, max_seconds)

@@ -366,6 +366,34 @@ class TestSplitByNaturalBoundary:
         assert len(result) >= 2
         assert "".join(c.text for c in result) == full_text
 
+    def test_no_timestamp_overlap_when_kuten_in_last_source(self):
+        """句点が最後の元キュー内部にある場合、タイムスタンプが重複しない。"""
+        source = [
+            make_cue(0, 0.0, 2.0, "その味を醤油味につければ"),
+            make_cue(1, 2.0, 8.0, "肉じゃがになるし、カレーになるそんなだけのことなんだよね。だから、"),
+        ]
+        text = "その味を醤油味につければ肉じゃがになるし、カレーになるそんなだけのことなんだよね。だから、"
+        result = _split_by_natural_boundary(text, source, max_seconds=5.0)
+        for i in range(len(result) - 1):
+            assert result[i].end <= result[i + 1].start, (
+                f"キュー{i}のend({result[i].end}) > キュー{i+1}のstart({result[i+1].start})"
+            )
+
+    def test_kuten_preferred_over_touten(self):
+        """句点と読点が両方ある場合、句点が優先して選ばれる。"""
+        source = self._make_sources(
+            ["Aが来た。", "Bがいて、", "Cが動いた。", "Dで終わる"],
+            dur_each=4.0,
+        )
+        full_text = "Aが来た。Bがいて、Cが動いた。Dで終わる"
+        # max_seconds=8.0 で16秒を分割 → 分割点が句点（。）で選ばれることを確認
+        result = _split_by_natural_boundary(full_text, source, max_seconds=8.0)
+        assert len(result) >= 2
+        # 分割点が読点（、）ではなく句点（。）で切られているか確認：
+        # 読点優先なら "Aが来た。Bがいて、" と "Cが動いた。Dで終わる" に分かれる
+        # 句点優先なら "Aが来た。" と "Bがいて、Cが動いた。Dで終わる" に分かれる
+        assert result[0].text == "Aが来た。"
+
     def test_index_sequential_after_long_split(self):
         """merge_cues の長キュー分割後にインデックスが連番になる。"""
         cues = [
