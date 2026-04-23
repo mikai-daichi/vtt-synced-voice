@@ -8,6 +8,7 @@ from vtt_synced_voice.cue_merger import (
     merge_cues,
     _is_end_punctuation,
     _contains_sentence_end,
+    _split_by_natural_boundary,
 )
 
 
@@ -316,3 +317,63 @@ class TestContainsSentenceEnd:
 
     def test_interior_period(self):
         assert _contains_sentence_end("He left. She stayed,") is True
+
+
+# ---------------------------------------------------------------------------
+# 長キュー分割（_split_by_natural_boundary）
+# ---------------------------------------------------------------------------
+
+class TestSplitByNaturalBoundary:
+    def _make_sources(self, texts: list[str], start: float = 0.0, dur_each: float = 2.0):
+        cues = []
+        t = start
+        for i, text in enumerate(texts):
+            cues.append(make_cue(i, t, t + dur_each, text))
+            t += dur_each
+        return cues
+
+    def test_short_cue_not_split(self):
+        """max_seconds 以下のキューは分割しない。"""
+        source = self._make_sources(["短いテキスト"], dur_each=5.0)
+        result = _split_by_natural_boundary("短いテキスト", source, max_seconds=15.0)
+        assert len(result) == 1
+        assert result[0].text == "短いテキスト"
+
+    def test_split_at_kuten(self):
+        """句点で長いキューを2つに分割する。"""
+        texts = ["Aが来た。", "Bが行った。", "Cが残った。", "Dが戻った。", "Eが動いた。"]
+        source = self._make_sources(texts, dur_each=4.0)
+        full_text = "".join(texts)
+        result = _split_by_natural_boundary(full_text, source, max_seconds=15.0)
+        assert len(result) >= 2
+        reconstructed = "".join(c.text for c in result)
+        assert reconstructed == full_text
+
+    def test_split_timestamps_from_source(self):
+        """分割されたキューのタイムスタンプが元キューから正確に設定される。"""
+        source = self._make_sources(["前半のテキストで、", "後半のテキストです。"], dur_each=10.0)
+        full_text = "前半のテキストで、後半のテキストです。"
+        result = _split_by_natural_boundary(full_text, source, max_seconds=15.0)
+        assert len(result) == 2
+        assert result[0].start == 0.0
+        assert result[1].end == 20.0
+
+    def test_no_candidate_splits_at_midpoint(self):
+        """区切り文字がない場合は元キュー境界の中央で分割する。"""
+        source = self._make_sources(["AAAA", "BBBB", "CCCC", "DDDD"], dur_each=5.0)
+        full_text = "AAAABBBBCCCCDDDD"
+        result = _split_by_natural_boundary(full_text, source, max_seconds=15.0)
+        assert len(result) >= 2
+        assert "".join(c.text for c in result) == full_text
+
+    def test_index_sequential_after_long_split(self):
+        """merge_cues の長キュー分割後にインデックスが連番になる。"""
+        cues = [
+            make_cue(0, 0.0, 4.0, "Aです。"),
+            make_cue(1, 4.5, 8.0, "Bです。"),
+            make_cue(2, 8.5, 12.0, "Cです。"),
+            make_cue(3, 12.5, 16.0, "Dです。"),
+            make_cue(4, 16.5, 20.0, "Eです。"),
+        ]
+        result = merge_cues(cues, language="ja", max_cue_seconds=10.0)
+        assert [c.index for c in result] == list(range(len(result)))
