@@ -85,14 +85,14 @@ def write_vtt(cues: list[VttCue], path: str) -> None:
     lines = ["WEBVTT", ""]
     for cue in cues:
         lines.append(f"{format_timestamp(cue.start)} --> {format_timestamp(cue.end)}")
-        lines.append(cue.text)
+        lines.append(cue.text.rstrip(_TRAILING_PUNCT))
         lines.append("")
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
-_TRAILING_PUNCT = "。．！？!?"
+_TRAILING_PUNCT = "。．！？、!?,"
 
 
 def write_txt(cues: list[VttCue], path: str) -> None:
