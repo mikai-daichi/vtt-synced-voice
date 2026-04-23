@@ -135,6 +135,10 @@ def _make_ja_detector():
         if pos0 == "接続詞" and last.surface in _SENTENCE_END_CONJ:
             return True
 
+        # 句点・感嘆符・疑問符で終わる（Whisperが付与した句読点）
+        if pos0 == "記号" and last.surface in {"。", "！", "？"}:
+            return True
+
         return False
 
     return is_end
