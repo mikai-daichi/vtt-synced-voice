@@ -95,6 +95,17 @@ def write_vtt(cues: list[VttCue], path: str) -> None:
 _TRAILING_PUNCT = "。．！？、!?,"
 
 
+def apply_replacements(
+    cues: list[VttCue],
+    replacements: list[list[str]],
+) -> list[VttCue]:
+    """キューテキストに置換リストを順番に適用する。"""
+    for cue in cues:
+        for before, after in replacements:
+            cue.text = cue.text.replace(before, after)
+    return cues
+
+
 def write_txt(cues: list[VttCue], path: str) -> None:
     """VttCueリストをタイムスタンプなし・句点なしのテキストで書き出す。"""
     lines = [cue.text.rstrip(_TRAILING_PUNCT) for cue in cues]

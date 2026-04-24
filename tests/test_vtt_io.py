@@ -13,6 +13,7 @@ from vtt_synced_voice.vtt_io import (
     format_timestamp,
     read_vtt,
     write_vtt,
+    apply_replacements,
 )
 
 
@@ -103,3 +104,45 @@ class TestReadWriteVtt:
         write_vtt(cues, str(out_file))
         content = out_file.read_text(encoding="utf-8")
         assert content.startswith("WEBVTT")
+
+
+# ---------------------------------------------------------------------------
+# apply_replacements
+# ---------------------------------------------------------------------------
+
+class TestApplyReplacements:
+    def _make_cue(self, text: str) -> VttCue:
+        return VttCue(index=0, start=0.0, end=1.0, text=text,
+                      original_start=0.0, original_end=1.0)
+
+    def test_single_replacement(self):
+        cues = [self._make_cue("ファイナルカットプロを使います")]
+        apply_replacements(cues, [["ファイナルカットプロ", "Final Cut Pro"]])
+        assert cues[0].text == "Final Cut Proを使います"
+
+    def test_multiple_replacements_applied_in_order(self):
+        cues = [self._make_cue("ファイナルカットプロXで編集")]
+        apply_replacements(cues, [
+            ["ファイナルカットプロX", "Final Cut Pro X"],
+            ["ファイナルカットプロ", "Final Cut Pro"],
+        ])
+        assert cues[0].text == "Final Cut Pro Xで編集"
+
+    def test_multiple_cues(self):
+        cues = [
+            self._make_cue("ホワイスパーを使います"),
+            self._make_cue("ホワイスパーで書き起こし"),
+        ]
+        apply_replacements(cues, [["ホワイスパー", "Whisper"]])
+        assert cues[0].text == "Whisperを使います"
+        assert cues[1].text == "Whisperで書き起こし"
+
+    def test_empty_replacements(self):
+        cues = [self._make_cue("変化なし")]
+        apply_replacements(cues, [])
+        assert cues[0].text == "変化なし"
+
+    def test_no_match(self):
+        cues = [self._make_cue("テスト文")]
+        apply_replacements(cues, [["存在しない", "置換後"]])
+        assert cues[0].text == "テスト文"

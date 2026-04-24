@@ -88,7 +88,11 @@ transcribe(
     margin_after=0.0,         # 終了時刻を延ばす秒数
     silence_threshold=0.001,  # ピーク正規化後のRMS閾値
     merge_sentences=True,     # 文単位にキューをマージする（デフォルト: True）
-    voice_only=False,          # タイムスタンプなしの.txtを出力する（デフォルト: False）
+    voice_only=False,         # タイムスタンプなしの.txtを出力する（デフォルト: False）
+    replacements=[            # 誤変換の修正リスト（省略可）
+        ["ファイナルカットプロ", "Final Cut Pro"],
+        ["ホワイスパー", "Whisper"],
+    ],
     verbose=True,
 )
 ```
@@ -132,6 +136,29 @@ write_txt(cues, "output.txt")
 ```
 
 > `voice_only=True` を指定すると、`output_file` の拡張子に関わらず自動的に `.txt` として書き出されます。
+
+### `replacements` について
+
+Whisper が誤認識しやすい固有名詞や専門用語を事前に登録しておくと、書き起こし後に自動で置換されます。
+
+```python
+replacements=[
+    ["ファイナルカットプロ", "Final Cut Pro"],
+    ["ホワイスパー",        "Whisper"],
+]
+```
+
+**注意：** リストの順番に適用されます。長い文字列（`ファイナルカットプロX`）を短い文字列（`ファイナルカットプロ`）より先に書いてください。
+
+既存の VTT ファイルに後から置換を適用することもできます：
+
+```python
+from vtt_synced_voice import read_vtt, apply_replacements, write_vtt
+
+cues = read_vtt("input.vtt")
+cues = apply_replacements(cues, [["ファイナルカットプロ", "Final Cut Pro"]])
+write_vtt(cues, "output.vtt")
+```
 
 ### 文単位マージの言語対応状況
 

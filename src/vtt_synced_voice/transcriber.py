@@ -8,7 +8,7 @@ import numpy as np
 
 from .cue_builder import build_cues_from_segments
 from .cue_merger import merge_cues
-from .vtt_io import VttCue, format_timestamp, write_vtt, write_txt
+from .vtt_io import VttCue, format_timestamp, write_vtt, write_txt, apply_replacements
 
 SAMPLE_RATE              = 16000      # Hz、モノラル
 WHISPERX_MAX_GAP_SECONDS = 0.4        # 文分割の無音ギャップ閾値（秒）
@@ -26,6 +26,7 @@ def transcribe(
     max_gap_seconds: float = WHISPERX_MAX_GAP_SECONDS,
     merge_sentences: bool = True,
     voice_only: bool = False,
+    replacements: list[list[str]] | None = None,
     verbose: bool = False,
     dry_run: bool = False,
 ) -> list[VttCue]:
@@ -45,6 +46,8 @@ def transcribe(
         max_gap_seconds: 文分割の無音ギャップ閾値（秒）
         merge_sentences: Trueなら形態素解析/句読点で文単位にキューをマージする
         voice_only: Trueならタイムスタンプなしの.txtファイルを書き出す（output_fileの拡張子は無視）
+        replacements: 置換リスト。[["置換前", "置換後"], ...] の形式で指定。
+                      順番に適用されるため、長い文字列を先に書くこと
         verbose: Trueなら各キューのタイムスタンプ補正結果を表示
         dry_run: Trueならファイルを書き出さずVttCueリストのみ返す
 
@@ -100,6 +103,9 @@ def transcribe(
             cues = merge_cues(cues, language)
             if verbose:
                 print(f"  マージ後: {len(cues)} キュー")
+
+        if replacements:
+            cues = apply_replacements(cues, replacements)
 
         if verbose:
             _print_verbose(cues, onset_debug, segments, silence_threshold)
