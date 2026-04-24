@@ -15,7 +15,7 @@ transcribe(
 
     # --- 書き起こし設定 ---
     language="ja",       # 言語コード: "ja" / "en" / "fr" / "de" など
-    model="large-v2",    # モデル: "small"（高速・低精度）/ "medium" / "large-v2"（低速・高精度）
+    model="medium",      # モデル: "small"（高速・低精度）/ "medium" / "large-v2"（低速・高精度）
     device="cpu",        # 推論デバイス: "cpu" / "cuda"（NVIDIA GPU）
 
     # --- タイムスタンプ調整 ---
@@ -44,7 +44,21 @@ transcribe(
     # True: タイムスタンプなし・句点なしの.txtファイルを出力する（カット編集済み動画のテロップ用）
     # False: 通常のVTTファイルを出力する（デフォルト）
 
+    # --- 誤変換置換 ---
+    replacements=[
+        # ["誤変換前", "正しい表記"],
+        # ["ファイナルカットプロ", "Final Cut Pro"],
+    ],
+    # Whisperが誤認識しやすい固有名詞・専門用語を登録する。
+    # 長い文字列を短い文字列より先に書くこと。
+
     # --- デバッグ ---
     verbose=True,        # onset検出の補正結果を表示する
     dry_run=False,       # True にするとファイルを書き出さずキューリストのみ返す
+
+    # --- 開発者オプション ---
+    write_unmerged=False,
+    # merge_sentences=True のときのみ有効。
+    # True: マージ前のキューを xxx_unmerged.vtt として追加出力する。
+    # max_gap_seconds の調整やマージ結果の検証に使用する。
 )
