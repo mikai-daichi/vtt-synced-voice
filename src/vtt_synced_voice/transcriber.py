@@ -25,6 +25,7 @@ def transcribe(
     silence_threshold: float = 0.001,
     max_gap_seconds: float = WHISPERX_MAX_GAP_SECONDS,
     merge_sentences: bool = True,
+    min_cue_chars: int = 50,
     voice_only: bool = False,
     replacements: list[list[str]] | None = None,
     verbose: bool = False,
@@ -46,6 +47,7 @@ def transcribe(
                            録音環境によって異なるためverbose=Trueで確認して調整
         max_gap_seconds: 文分割の無音ギャップ閾値（秒）
         merge_sentences: Trueなら形態素解析/句読点で文単位にキューをマージする
+        min_cue_chars: マージ後にこの文字数を超えるキューを句点/形態素解析で後処理分割する（0で無効）
         voice_only: Trueならタイムスタンプなしの.txtファイルを書き出す（output_fileの拡張子は無視）
         replacements: 置換リスト。[["置換前", "置換後"], ...] の形式で指定。
                       順番に適用されるため、長い文字列を先に書くこと
@@ -107,7 +109,7 @@ def transcribe(
                 unmerged_cues = list(cues)
             if verbose:
                 print("文単位マージ中...")
-            cues = merge_cues(cues, language)
+            cues = merge_cues(cues, language, min_cue_chars=min_cue_chars)
             if verbose:
                 print(f"  マージ後: {len(cues)} キュー")
 

@@ -32,6 +32,7 @@ def merge_cues(
     cues: list[VttCue],
     language: str,
     max_cue_seconds: float = 15.0,
+    min_cue_chars: int = 50,
 ) -> list[VttCue]:
     """過分割されたVttCueを文単位にマージして返す。
 
@@ -40,6 +41,7 @@ def merge_cues(
     - その他: ピリオド/感嘆符/疑問符で判定（略語・省略記号は除外）
 
     max_cue_seconds を超えるキューは自然な区切りで再分割する。
+    min_cue_chars を超えるキューは句点または形態素解析で後処理分割する。
     """
     if not cues:
         return []
@@ -63,10 +65,16 @@ def merge_cues(
     if buffer:
         merged.append(_flush(buffer, len(merged), join_sep))
 
-    # 長すぎるキューを再分割
+    # 長すぎるキューを再分割（秒数ベース）
     if language == "ja" and max_cue_seconds > 0:
         merged = _split_long_cues(merged, max_cue_seconds)
-        # インデックス振り直し
+
+    # 長すぎるキューを後処理分割（文字数ベース：句点→形態素解析）
+    if language == "ja" and min_cue_chars > 0:
+        merged = _split_long_cues_post(merged, min_cue_chars)
+
+    # インデックス振り直し
+    if language == "ja":
         for i, c in enumerate(merged):
             c.index = i
 
@@ -101,6 +109,194 @@ def _split_long_cues(cues: list[VttCue], max_seconds: float) -> list[VttCue]:
         split = _split_by_natural_boundary(cue.text, source, max_seconds)
         result.extend(split)
     return result
+
+
+def _split_long_cues_post(cues: list[VttCue], min_chars: int) -> list[VttCue]:
+    """min_chars を超えるキューを後処理で分割する。
+
+    フェーズ1: 句点（。！？!?）が含まれれば全句点で分割。
+    フェーズ2: 句点がなければ形態素解析で文末+文頭パターンを検出して分割。
+    min_chars 以下のキューは一切変更しない。
+    分割後のキューに対して再帰的に適用する。
+    """
+    result: list[VttCue] = []
+    for cue in cues:
+        if len(cue.text) <= min_chars:
+            result.append(cue)
+            continue
+        source: list[VttCue] = getattr(cue, "_source_cues", [cue])
+        positions = _find_split_positions(cue.text, min_chars)
+        if not positions:
+            result.append(cue)
+            continue
+        # 分割後のキューに再帰適用（分割結果がまだ長い場合に対応）
+        split = _apply_split_positions(cue.text, source, positions)
+        result.extend(_split_long_cues_post(split, min_chars))
+    return result
+
+
+def _find_split_positions(text: str, min_chars: int) -> list[int]:
+    """テキスト内の分割位置（文字インデックス）リストを返す。
+
+    フェーズ1: 句点（。！？!?）を全て収集。
+    フェーズ2: 句点がなければ形態素解析で文末+文頭パターンを検出。
+    いずれも「残り文字数 >= min_chars // 2」のみ有効とする。
+    """
+    min_remaining = max(min_chars // 2, 5)
+
+    # フェーズ1: 全角句点（。！？）による分割位置
+    # 半角 ? ! は話し言葉で文中にも現れるためフェーズ2（形態素解析）に委ねる
+    kuten_positions = [
+        m.end() for m in re.finditer(r"[。！？]", text)
+        if len(text) - m.end() >= min_remaining
+    ]
+    if kuten_positions:
+        return kuten_positions
+
+    # フェーズ2: 形態素解析による分割位置
+    return _find_morpheme_split_positions(text, min_remaining)
+
+
+def _find_morpheme_split_positions(text: str, min_remaining: int) -> list[int]:
+    """形態素解析で「文末トークン + 文頭らしい次トークン」の位置を返す。
+
+    文末判定: is_end() と同等のルール（ただし除外セットを拡大）
+    文頭判定: 次トークンが名詞/一般・固有名詞・数・代名詞、感動詞、接続詞のいずれか
+    """
+    from janome.tokenizer import Tokenizer
+    tokenizer = Tokenizer()
+    tokens = list(tokenizer.tokenize(text))
+
+    # 文末になりえない助動詞（文の途中の活用形）
+    _EXCLUDE_AUX = frozenset({"な", "ん", "ませ", "でしょ"})
+
+    # 文頭らしい品詞・細分類の組み合わせ
+    # 名詞/非自立（「の」「こと」等）と名詞/接尾（「人」「年」等）は除外
+    _SENTENCE_START_POS = {
+        ("名詞", "一般"),
+        ("名詞", "固有名詞"),
+        ("名詞", "数"),
+        ("名詞", "代名詞"),
+        ("感動詞", "*"),
+        ("接続詞", "*"),
+    }
+
+    positions: list[int] = []
+    char_pos = 0
+    prev_surface = ""
+
+    for i, tok in enumerate(tokens):
+        surface = tok.surface
+        end_pos = char_pos + len(surface)
+        ps = tok.part_of_speech.split(",")
+        ps0 = ps[0]
+        ps1 = ps[1] if len(ps) > 1 else "*"
+
+        # 文末判定（is_end() と同等、除外セットを拡大）
+        is_end_tok = False
+        if ps0 == "助動詞" and surface not in _EXCLUDE_AUX:
+            if surface == "た":
+                is_end_tok = (prev_surface == "まし")
+            else:
+                is_end_tok = True
+        elif ps0 == "動詞" and ps1 == "非自立":
+            is_end_tok = True
+        elif ps0 == "感動詞":
+            is_end_tok = True
+        elif ps0 == "助詞" and ps1 == "終助詞":
+            is_end_tok = True
+        elif ps0 == "助詞" and ps1 == "接続助詞" and surface in _KEREDO_SURFACES:
+            is_end_tok = True
+        elif ps0 == "接続詞" and surface in _KEREDO_CONJ:
+            is_end_tok = True
+        elif ps0 == "助詞" and ps1 == "接続助詞" and surface in _KARA_NODE_SURFACES:
+            is_end_tok = True
+        elif ps0 == "助詞" and ps1 == "格助詞" and surface == "って":
+            is_end_tok = True
+        elif ps0 == "接続詞" and surface in _SENTENCE_END_CONJ:
+            is_end_tok = True
+        elif ps0 == "記号" and surface in {"。", "！", "？"}:
+            is_end_tok = True
+
+        if is_end_tok and i + 1 < len(tokens):
+            remaining = len(text) - end_pos
+            if remaining < min_remaining:
+                prev_surface = surface
+                char_pos = end_pos
+                continue
+
+            nxt = tokens[i + 1]
+            nxt_ps = nxt.part_of_speech.split(",")
+            nxt_ps0 = nxt_ps[0]
+            nxt_ps1 = nxt_ps[1] if len(nxt_ps) > 1 else "*"
+
+            if (nxt_ps0, nxt_ps1) in _SENTENCE_START_POS or (nxt_ps0, "*") in _SENTENCE_START_POS:
+                positions.append(end_pos)
+
+        prev_surface = surface
+        char_pos = end_pos
+
+    return positions
+
+
+def _apply_split_positions(
+    text: str,
+    source_cues: list[VttCue],
+    positions: list[int],
+) -> list[VttCue]:
+    """分割位置リストに従ってテキストを分割し、タイムスタンプを割り当てる。
+
+    タイムスタンプは source_cues の累積文字数で対応する元キューを特定する。
+    分割点が最後の元キュー内に収まる場合は線形補間で時刻を推定する。
+    """
+    # source_cues の累積文字数マップ
+    cumulative: list[int] = []
+    acc = 0
+    for sc in source_cues:
+        acc += len(sc.text)
+        cumulative.append(acc)
+    total_chars = cumulative[-1]
+
+    def time_at(char_pos: int) -> float:
+        """char_pos に対応する時刻を返す。"""
+        for i, cum in enumerate(cumulative):
+            if cum >= char_pos:
+                sc = source_cues[i]
+                # このsource_cue内での位置を線形補間
+                prev_cum = cumulative[i - 1] if i > 0 else 0
+                local_ratio = (char_pos - prev_cum) / max(cum - prev_cum, 1)
+                return sc.start + (sc.end - sc.start) * local_ratio
+        # char_pos が末尾を超えた場合（念のため）
+        return source_cues[-1].end
+
+    result: list[VttCue] = []
+    boundaries = [0] + positions + [len(text)]
+
+    for j in range(len(boundaries) - 1):
+        seg_text = text[boundaries[j]:boundaries[j + 1]].strip()
+        if not seg_text:
+            continue
+        seg_start = time_at(boundaries[j]) if boundaries[j] > 0 else source_cues[0].start
+        seg_end = time_at(boundaries[j + 1]) if boundaries[j + 1] < len(text) else source_cues[-1].end
+
+        cue = VttCue(
+            index=0,
+            start=seg_start,
+            end=seg_end,
+            text=seg_text,
+            original_start=seg_start,
+            original_end=seg_end,
+        )
+        result.append(cue)
+
+    return result if result else [VttCue(
+        index=0,
+        start=source_cues[0].start,
+        end=source_cues[-1].end,
+        text=text,
+        original_start=source_cues[0].original_start,
+        original_end=source_cues[-1].original_end,
+    )]
 
 
 def _split_by_natural_boundary(
