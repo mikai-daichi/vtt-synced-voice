@@ -4,7 +4,6 @@ import re
 
 import numpy as np
 
-from .onset import find_onset
 from .vtt_io import VttCue
 
 SENTENCE_END_DURATION = 0.15  # 文末単語の発声時間推定（秒）
@@ -19,26 +18,17 @@ def build_cues_from_segments(
     margin_after: float = 0.0,
     silence_threshold: float = 0.001,
     language: str = "ja",
-) -> tuple[list[VttCue], list[dict]]:
+) -> list[VttCue]:
     """WhisperXのsegments（単語タイムスタンプ付き）をVttCueリストに変換する。
 
-    startはfind_onset()でFCP方式の無音境界検出を適用する:
-    - CTCのstartから逆スキャンして無音→有音の境界をstartとする
-    - end（文末キュー）: 末尾単語のCTC start + SENTENCE_END_DURATION + margin_after
-    - end（文中キュー）: 末尾単語のCTC end + margin_after
-
-    endクランプ: margin_afterが次キューのstartを侵食しないよう、
-    次キューのstart - 0.1s を上限とし、キュー間に必ず無音区間を確保する。
-
-    戻り値:
-        (cues, onset_debug_list)
-        onset_debug_list: [{"index": int, "ctc": float, "onset": float, "note": str}, ...]
+    onset補正・endクランプは行わない。apply_onset_to_cues() に委ねる。
+    start / original_start ともに CTC start をそのまま設定する。
+    end（文末）: 末尾単語の CTC start + SENTENCE_END_DURATION
+    end（文中）: 末尾単語の CTC end
     """
-    # 日本語はスペースなし結合、その他は単語間にスペースを挿入
     word_sep = "" if language == "ja" else " "
 
     cues: list[VttCue] = []
-    onset_debug: list[dict] = []
     index = 0
 
     for seg in segments:
@@ -48,21 +38,15 @@ def build_cues_from_segments(
             text = seg.get("text", "").strip()
             if text:
                 ctc_start = float(seg["start"])
-                onset_sec, note = find_onset(
-                    audio_normalized, sample_rate, ctc_start,
-                    silence_threshold=silence_threshold,
-                )
-                start = max(0.0, onset_sec - margin_before)
-                end = float(seg["end"]) + margin_after
+                end = float(seg["end"])
                 cues.append(VttCue(
                     index=index,
-                    start=start,
+                    start=ctc_start,
                     end=end,
                     text=text,
                     original_start=ctc_start,
                     original_end=end,
                 ))
-                onset_debug.append({"index": index, "ctc": ctc_start, "onset": onset_sec, "note": note})
                 index += 1
             continue
 
@@ -73,7 +57,7 @@ def build_cues_from_segments(
             nonlocal index
             words_clean = list(buffer_words)
             text_parts = list(buffer_text)
-            while words_clean and not re.search(r'[\w\u3040-\u9FFF]', text_parts[0]):
+            while words_clean and not re.search(r'[\w぀-鿿]', text_parts[0]):
                 words_clean.pop(0)
                 text_parts.pop(0)
             if not words_clean:
@@ -82,24 +66,18 @@ def build_cues_from_segments(
             if not text:
                 return
             ctc_start = float(words_clean[0]["start"])
-            onset_sec, note = find_onset(
-                audio_normalized, sample_rate, ctc_start,
-                silence_threshold=silence_threshold,
-            )
-            start = max(0.0, onset_sec - margin_before)
             if is_sentence_end:
-                end = float(buffer_words[-1]["start"]) + SENTENCE_END_DURATION + margin_after
+                end = float(buffer_words[-1]["start"]) + SENTENCE_END_DURATION
             else:
-                end = float(buffer_words[-1]["end"]) + margin_after
+                end = float(buffer_words[-1]["end"])
             cues.append(VttCue(
                 index=index,
-                start=start,
+                start=ctc_start,
                 end=end,
                 text=text,
                 original_start=ctc_start,
                 original_end=end,
             ))
-            onset_debug.append({"index": index, "ctc": ctc_start, "onset": onset_sec, "note": note})
             index += 1
 
         for w in words:
@@ -121,9 +99,4 @@ def build_cues_from_segments(
         if buffer_words:
             _flush_buffer(is_sentence_end=True)
 
-    # endクランプ: 次キューのstartとの間に0.1秒の無音を確保
-    for i in range(len(cues) - 1):
-        cues[i].end = min(cues[i].end, cues[i + 1].start - 0.1)
-        cues[i].original_end = cues[i].end
-
-    return cues, onset_debug
+    return cues

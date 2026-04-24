@@ -41,14 +41,14 @@ class TestBasicCueGeneration:
         audio = _make_voiced_audio()
         # gap = world.start(1.2) - (hello.start(1.0) + SENTENCE_END_DURATION(0.15)) = 0.05 < MAX_GAP
         seg = _seg([_word("hello", 1.0, 1.1), _word("world", 1.2, 1.5)])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 1
         assert cues[0].text == "helloworld"
 
     def test_cue_text(self):
         audio = _make_voiced_audio()
         seg = _seg([_word("こんにちは", 1.0, 1.8)])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert cues[0].text == "こんにちは"
 
     def test_gap_splits_into_two_cues(self):
@@ -58,7 +58,7 @@ class TestBasicCueGeneration:
             _word("前", 1.0, 1.5),
             _word("後", 3.0, 3.5),
         ])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 2
 
     def test_no_gap_stays_single_cue(self):
@@ -68,31 +68,38 @@ class TestBasicCueGeneration:
             _word("あ", 1.0, 1.1),
             _word("い", 1.2, 1.4),
         ])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 1
+
+    def test_original_start_equals_ctc_start(self):
+        """build_cues_from_segments は onset 補正なし: start == original_start == CTC start。"""
+        audio = _make_voiced_audio()
+        seg = _seg([_word("テスト", 2.0, 2.5)])
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        assert cues[0].start == 2.0
+        assert cues[0].original_start == 2.0
 
 
 class TestEndClamp:
-    def test_end_clamped_to_next_start_minus_100ms(self):
+    def test_end_clamp_done_by_apply_onset(self):
+        """endクランプは apply_onset_to_cues() の責務: build 後はクランプ前の値のまま。"""
         audio = _make_voiced_audio()
-        # キュー0のendが大きく、キュー1のstartを侵食するケース
         seg = _seg([
-            _word("あ", 1.0, 5.0),  # end が大きい
-            _word("い", 5.5, 6.0),  # 次のキューのstart≈5.5
+            _word("あ", 1.0, 1.1),
+            _word("い", 3.0, 3.5),
         ])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE,
-                                           margin_after=2.0)  # 大きなmargin_after
-        if len(cues) >= 2:
-            assert cues[0].end <= cues[1].start - 0.1 + 0.001  # 0.001は浮動小数点誤差の許容
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        # 2キューに分割され、それぞれ end は未クランプ
+        assert len(cues) == 2
 
-    def test_last_cue_not_clamped(self):
+    def test_last_cue_end_is_sentence_end_duration(self):
+        """文末キューの end は 末尾単語の start + SENTENCE_END_DURATION。"""
+        from vtt_synced_voice.cue_builder import SENTENCE_END_DURATION
         audio = _make_voiced_audio()
         seg = _seg([_word("終", 8.0, 8.5)])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE,
-                                           margin_after=0.5)
-        # 最後のキューはクランプされない
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 1
-        assert cues[0].end > 8.5
+        assert abs(cues[0].end - (8.0 + SENTENCE_END_DURATION)) < 0.001
 
 
 class TestNoiseCharStripping:
@@ -103,30 +110,12 @@ class TestNoiseCharStripping:
             _word(".", 1.0, 1.1),
             _word("こんにちは", 1.2, 1.8),
         ])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 1
         assert "." not in cues[0].text or "こんにちは" in cues[0].text
 
     def test_all_noise_chars_returns_no_cue(self):
         audio = _make_voiced_audio()
         seg = _seg([_word(".", 1.0, 1.1), _word("?", 1.2, 1.3)])
-        cues, _ = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
+        cues = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
         assert len(cues) == 0
-
-
-class TestOnsetDebug:
-    def test_debug_list_matches_cue_count(self):
-        audio = _make_voiced_audio()
-        seg = _seg([_word("テスト", 2.0, 2.5)])
-        cues, onset_debug = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
-        assert len(onset_debug) == len(cues)
-
-    def test_debug_has_required_keys(self):
-        audio = _make_voiced_audio()
-        seg = _seg([_word("テスト", 2.0, 2.5)])
-        _, onset_debug = build_cues_from_segments([seg], MAX_GAP, audio, SAMPLE_RATE)
-        for d in onset_debug:
-            assert "index" in d
-            assert "ctc" in d
-            assert "onset" in d
-            assert "note" in d

@@ -8,6 +8,7 @@ import numpy as np
 
 from .cue_builder import build_cues_from_segments
 from .cue_merger import merge_cues
+from .onset import find_onset
 from .vtt_io import VttCue, format_timestamp, write_vtt, write_txt, apply_replacements
 
 SAMPLE_RATE              = 16000      # Hz、モノラル
@@ -96,7 +97,7 @@ def transcribe(
 
         if verbose:
             print("VTTキュー生成中...")
-        cues, onset_debug = build_cues_from_segments(
+        cues = build_cues_from_segments(
             segments, max_gap_seconds, audio_normalized, SAMPLE_RATE,
             margin_before, margin_after, silence_threshold, language,
         )
@@ -112,6 +113,15 @@ def transcribe(
             cues = merge_cues(cues, language, min_cue_chars=min_cue_chars)
             if verbose:
                 print(f"  マージ後: {len(cues)} キュー")
+
+        if verbose:
+            print("タイムスタンプ補正中...")
+        cues, onset_debug = apply_onset_to_cues(
+            cues, audio_normalized, SAMPLE_RATE,
+            margin_before, margin_after, silence_threshold,
+        )
+        if verbose:
+            print(f"  補正完了")
 
         if replacements:
             cues = apply_replacements(cues, replacements)
@@ -142,6 +152,44 @@ def transcribe(
 
     finally:
         Path(wav_path).unlink(missing_ok=True)
+
+
+def apply_onset_to_cues(
+    cues: list[VttCue],
+    audio_normalized: np.ndarray,
+    sample_rate: int,
+    margin_before: float,
+    margin_after: float,
+    silence_threshold: float,
+) -> tuple[list[VttCue], list[dict]]:
+    """文単位に確定したキューの start を音声波形で補正する。
+
+    各キューの original_start（= CTC start）に find_onset() を適用して
+    start を更新する。end は次キューの start - 0.1s でクランプする。
+    """
+    onset_debug: list[dict] = []
+
+    for cue in cues:
+        ctc_start = cue.original_start
+        onset_sec, note = find_onset(
+            audio_normalized, sample_rate, ctc_start,
+            silence_threshold=silence_threshold,
+        )
+        cue.start = max(0.0, onset_sec - margin_before)
+        cue.end = cue.end + margin_after
+        onset_debug.append({
+            "index": cue.index,
+            "ctc": ctc_start,
+            "onset": onset_sec,
+            "note": note,
+        })
+
+    # endクランプ: 次キューの start との間に 0.1s の無音を確保
+    for i in range(len(cues) - 1):
+        cues[i].end = min(cues[i].end, cues[i + 1].start - 0.1)
+        cues[i].original_end = cues[i].end
+
+    return cues, onset_debug
 
 
 def _extract_audio_to_wav(src: str, dst: str, sample_rate: int = SAMPLE_RATE) -> bool:
