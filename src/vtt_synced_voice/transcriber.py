@@ -29,6 +29,7 @@ def transcribe(
     replacements: list[list[str]] | None = None,
     verbose: bool = False,
     dry_run: bool = False,
+    write_unmerged: bool = False,
 ) -> list[VttCue]:
     """音声/動画ファイルを書き起こし、タイムスタンプ補正済みのVTTを生成する。
 
@@ -50,6 +51,9 @@ def transcribe(
                       順番に適用されるため、長い文字列を先に書くこと
         verbose: Trueなら各キューのタイムスタンプ補正結果を表示
         dry_run: Trueならファイルを書き出さずVttCueリストのみ返す
+        write_unmerged: 【開発者オプション】merge_sentences=True のときのみ有効。
+                        Trueならマージ前のキューを xxx_unmerged.vtt として追加出力する。
+                        merge_sentences と max_gap_seconds の調整時に使用する
 
     Returns:
         生成されたVttCueのリスト
@@ -97,7 +101,10 @@ def transcribe(
         if verbose:
             print(f"  {len(cues)} キュー生成完了")
 
+        unmerged_cues: list[VttCue] | None = None
         if merge_sentences:
+            if write_unmerged:
+                unmerged_cues = list(cues)
             if verbose:
                 print("文単位マージ中...")
             cues = merge_cues(cues, language)
@@ -120,6 +127,12 @@ def transcribe(
                 write_vtt(cues, output_file)
                 if verbose:
                     print(f"\n出力完了: {output_file}")
+            if unmerged_cues is not None:
+                stem = Path(output_file).stem
+                unmerged_path = str(Path(output_file).with_name(f"{stem}_unmerged.vtt"))
+                write_vtt(unmerged_cues, unmerged_path)
+                if verbose:
+                    print(f"出力完了 (unmerged): {unmerged_path}")
         elif verbose:
             print("\n[DRY RUN] ファイルへの書き出しをスキップしました")
 

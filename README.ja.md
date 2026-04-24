@@ -137,6 +137,17 @@ write_txt(cues, "output.txt")
 
 > `voice_only=True` を指定すると、`output_file` の拡張子に関わらず自動的に `.txt` として書き出されます。
 
+### `write_unmerged` について（開発者オプション）
+
+`merge_sentences=True` のときのみ有効です。`True` にすると、マージ前のキューを `xxx_unmerged.vtt` として追加出力します。
+
+```
+output.vtt           ← マージ後（通常の出力）
+output_unmerged.vtt  ← マージ前（WhisperX + max_gap_seconds による分割のまま）
+```
+
+`max_gap_seconds` の値を調整する際に両ファイルを見比べることで、分割とマージの結果を確認できます。通常使用では `False`（デフォルト）のままにしてください。
+
 ### `replacements` について
 
 Whisper が誤認識しやすい固有名詞や専門用語を事前に登録しておくと、書き起こし後に自動で置換されます。
