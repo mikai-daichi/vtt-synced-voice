@@ -197,6 +197,38 @@ class TestMergeCuesJapanese:
         result = merge_cues(cues, language="ja")
         assert len(result) == 2
 
+    # --- 接続助詞止め・し系 ---
+
+    def test_shi_is_sentence_end(self):
+        """「し」接続助詞止めは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "お金も貯まるし"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_shi_mid_sentence_merges(self):
+        """「〜ないし」が文中のキュー末尾の場合はマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 1.0, "悪くないし"),
+            make_cue(1, 1.2, 2.5, "問題もないし進めます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        # 「悪くないし」は文末と判定されフラッシュされるため2キューになる
+        assert len(result) == 2
+
+    # --- 格助詞「って」引用止め ---
+
+    def test_tte_citation_is_sentence_end(self):
+        """格助詞「って」引用止めは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "困るかって"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
     # --- 接続詞止め ---
 
     def test_dakara_is_sentence_end(self):

@@ -209,7 +209,7 @@ def _split_by_natural_boundary(
 
 
 _KEREDO_SURFACES = frozenset({"けど", "けども", "が"})
-_KARA_NODE_SURFACES = frozenset({"から", "ので"})
+_KARA_NODE_SURFACES = frozenset({"から", "ので", "し"})
 _SENTENCE_END_CONJ = frozenset({"なので", "だから", "ですから"})
 _KEREDO_CONJ = frozenset({"けれど", "けれども"})
 
@@ -258,9 +258,14 @@ def _make_ja_detector():
         if pos0 == "接続詞" and last.surface in _KEREDO_CONJ:
             return True
 
-        # 接続助詞止め・から/ので系
+        # 接続助詞止め・から/ので/し系
         # 格助詞の「から」（東京から）とはJanomeが区別するため誤検出なし
         if pos0 == "助詞" and pos1 == "接続助詞" and last.surface in _KARA_NODE_SURFACES:
+            return True
+
+        # 格助詞「って」引用止め（〜かって / 〜だって）
+        # 話し言葉で文を引用・強調して止める用法
+        if pos0 == "助詞" and pos1 == "格助詞" and last.surface == "って":
             return True
 
         # 接続詞止め（なので/だから/ですから）
