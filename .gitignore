@@ -23,6 +23,9 @@ htmlcov/
 .vscode/
 .idea/
 
+# Claude Code memory (local only)
+.claude/
+
 # Local test script (copy from test_run.py.example and edit)
 test_run.py
 
