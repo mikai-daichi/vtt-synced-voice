@@ -18,7 +18,7 @@ def transcribe(
     audio_file: str,
     output_file: str,
     language: str = "ja",
-    model: str = "large-v2",
+    model: str = "medium",
     device: str = "cpu",
     margin_before: float = 0.066,
     margin_after: float = 0.0,

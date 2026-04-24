@@ -82,7 +82,7 @@ transcribe(
     audio_file="sample.m4a",
     output_file="output.vtt",
     language="ja",            # "ja" / "en" など
-    model="large-v2",         # "small" / "medium" / "large-v2"
+    model="medium",            # "small" / "medium" / "large-v2"
     device="cpu",             # "cpu" / "cuda"
     margin_before=0.066,      # onset検出後、さらに早める秒数（デフォルト: 30fps×2フレーム）
     margin_after=0.0,         # 終了時刻を延ばす秒数
