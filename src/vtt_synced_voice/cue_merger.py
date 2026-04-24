@@ -114,12 +114,19 @@ def _split_long_cues(cues: list[VttCue], max_seconds: float) -> list[VttCue]:
 def _split_long_cues_post(cues: list[VttCue], min_chars: int) -> list[VttCue]:
     """min_chars を超えるキューを後処理で分割する。
 
-    フェーズ1: 句点（。！？!?）が含まれれば全句点で分割。
+    フェーズ1: 句点（。！？）が含まれれば全句点で分割。
     フェーズ2: 句点がなければ形態素解析で文末+文頭パターンを検出して分割。
     min_chars 以下のキューは一切変更しない。
     分割後のキューに対して再帰的に適用する。
+
+    末尾断片が短すぎる場合（< min_chars // 5）は次のキューの先頭に連結する。
     """
+    min_tail = max(min_chars // 5, 5)
+
     result: list[VttCue] = []
+    # 分割されたキューの位置を記録する（_merge_short_tailの対象を限定するため）
+    split_indices: set[int] = set()
+
     for cue in cues:
         if len(cue.text) <= min_chars:
             result.append(cue)
@@ -131,8 +138,57 @@ def _split_long_cues_post(cues: list[VttCue], min_chars: int) -> list[VttCue]:
             continue
         # 分割後のキューに再帰適用（分割結果がまだ長い場合に対応）
         split = _apply_split_positions(cue.text, source, positions)
+        start_idx = len(result)
         result.extend(_split_long_cues_post(split, min_chars))
-    return result
+        for idx in range(start_idx, len(result)):
+            split_indices.add(idx)
+
+    # 分割によって生じた短い末尾断片のみを次のキューの先頭に連結する
+    # 例: 「...あるよ。」「相手」「がじゃあ...」→「...あるよ。」「相手がじゃあ...」
+    if not split_indices:
+        return result
+
+    merged: list[VttCue] = []
+    carry_text: str = ""
+    carry_start: float = 0.0
+    carry_original_start: float = 0.0
+
+    for i, cue in enumerate(result):
+        text = carry_text + cue.text if carry_text else cue.text
+        start = carry_start if carry_text else cue.start
+        original_start = carry_original_start if carry_text else cue.original_start
+        carry_text = ""
+
+        is_last = (i == len(result) - 1)
+        # 分割されたキューが短すぎる場合のみ次へ持ち越す
+        if (i in split_indices and not is_last
+                and 0 < len(text) < min_tail):
+            carry_text = text
+            carry_start = start
+            carry_original_start = original_start
+        else:
+            new_cue = VttCue(
+                index=cue.index,
+                start=start,
+                end=cue.end,
+                text=text,
+                original_start=original_start,
+                original_end=cue.original_end,
+            )
+            if hasattr(cue, "_source_cues"):
+                new_cue._source_cues = cue._source_cues
+            merged.append(new_cue)
+
+    # carry が残った場合は前のキューに戻す
+    if carry_text and merged:
+        last = merged[-1]
+        merged[-1] = VttCue(
+            index=last.index, start=last.start, end=last.end,
+            text=last.text + carry_text,
+            original_start=last.original_start, original_end=last.original_end,
+        )
+
+    return merged
 
 
 def _find_split_positions(text: str, min_chars: int) -> list[int]:
@@ -142,13 +198,14 @@ def _find_split_positions(text: str, min_chars: int) -> list[int]:
     フェーズ2: 句点がなければ形態素解析で文末+文頭パターンを検出。
     いずれも「残り文字数 >= min_chars // 2」のみ有効とする。
     """
-    min_remaining = max(min_chars // 2, 5)
+    min_remaining = max(min_chars // 5, 10)
 
     # フェーズ1: 全角句点（。！？）による分割位置
     # 半角 ? ! は話し言葉で文中にも現れるためフェーズ2（形態素解析）に委ねる
+    # 残り文字数の制限なし（残り短い場合は呼び出し元で次キューへ連結）
     kuten_positions = [
         m.end() for m in re.finditer(r"[。！？]", text)
-        if len(text) - m.end() >= min_remaining
+        if m.end() < len(text)  # 末尾句点（残り0文字）のみ除外
     ]
     if kuten_positions:
         return kuten_positions
@@ -177,8 +234,12 @@ def _find_morpheme_split_positions(text: str, min_remaining: int) -> list[int]:
         ("名詞", "固有名詞"),
         ("名詞", "数"),
         ("名詞", "代名詞"),
+        ("名詞", "サ変接続"),   # 「相談」「返金」「結婚」等
         ("感動詞", "*"),
         ("接続詞", "*"),
+        ("副詞", "*"),          # 「もう」「ただ」「今」等、話し言葉の文頭に多い
+        ("形容詞", "自立"),     # 「やばい」「すごい」等
+        ("連体詞", "*"),        # 「その」「こんな」「あの」等
     }
 
     positions: list[int] = []
@@ -218,6 +279,23 @@ def _find_morpheme_split_positions(text: str, min_remaining: int) -> list[int]:
         elif ps0 == "記号" and surface in {"。", "！", "？"}:
             is_end_tok = True
 
+        # 「でしょうか」「ますか」: 助動詞「う」の直後が「か」（副助詞系）で
+        # さらにその次が文頭らしいトークンなら、「か」の後を分割点とする
+        # （「う」は is_end_tok=True になるが次が「か」の場合は「か」後を優先）
+        if (surface == "う" and ps0 == "助動詞"
+                and i + 2 < len(tokens)):
+            nxt1 = tokens[i + 1]
+            nxt2 = tokens[i + 2]
+            if nxt1.surface == "か":
+                ka_end = end_pos + len(nxt1.surface)
+                remaining = len(text) - ka_end
+                if remaining >= min_remaining:
+                    nxt2_ps = nxt2.part_of_speech.split(",")
+                    nxt2_ps0 = nxt2_ps[0]
+                    nxt2_ps1 = nxt2_ps[1] if len(nxt2_ps) > 1 else "*"
+                    if (nxt2_ps0, nxt2_ps1) in _SENTENCE_START_POS or (nxt2_ps0, "*") in _SENTENCE_START_POS:
+                        positions.append(ka_end)
+
         if is_end_tok and i + 1 < len(tokens):
             remaining = len(text) - end_pos
             if remaining < min_remaining:
@@ -237,6 +315,61 @@ def _find_morpheme_split_positions(text: str, min_remaining: int) -> list[int]:
         char_pos = end_pos
 
     return positions
+
+
+def _merge_short_tail(cues: list[VttCue], min_tail: int) -> list[VttCue]:
+    """分割後の末尾断片が短すぎる場合、次のキューの先頭に連結する。
+
+    例: [「...あるよ。」, 「相手」, 「がじゃあ...」]
+      → 「相手」(2文字 < min_tail) は次の「がじゃあ...」の先頭へ
+      → [「...あるよ。」, 「相手がじゃあ...」]
+    """
+    if len(cues) <= 1:
+        return cues
+
+    result: list[VttCue] = []
+    carry_text: str = ""
+    carry_start: float = 0.0
+    carry_original_start: float = 0.0
+
+    for i, cue in enumerate(cues):
+        text = carry_text + cue.text if carry_text else cue.text
+        start = carry_start if carry_text else cue.start
+        original_start = carry_original_start if carry_text else cue.original_start
+        carry_text = ""
+
+        is_last = (i == len(cues) - 1)
+        if not is_last and 0 < len(text) < min_tail:
+            # 短すぎる → 次キューへ持ち越し
+            carry_text = text
+            carry_start = start
+            carry_original_start = original_start
+        else:
+            new_cue = VttCue(
+                index=cue.index,
+                start=start,
+                end=cue.end,
+                text=text,
+                original_start=original_start,
+                original_end=cue.original_end,
+            )
+            if hasattr(cue, "_source_cues"):
+                new_cue._source_cues = cue._source_cues
+            result.append(new_cue)
+
+    # carry が残った場合（最後のキューが短い）は前のキューに戻す
+    if carry_text and result:
+        last = result[-1]
+        result[-1] = VttCue(
+            index=last.index,
+            start=last.start,
+            end=last.end,
+            text=last.text + carry_text,
+            original_start=last.original_start,
+            original_end=last.original_end,
+        )
+
+    return result
 
 
 def _apply_split_positions(

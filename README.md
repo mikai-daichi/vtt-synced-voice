@@ -11,8 +11,11 @@ Generate VTT subtitles with timestamps precisely snapped to voice onset using Wh
 - Bidirectional onset detection: backward scan when CTC start is inside voice, forward scan when in silence
 - Guaranteed silence gap between cues (100ms minimum)
 - Sentence-level cue merging: over-split cues are merged into natural sentence units
-  - Japanese: morphological analysis (Janome) detects sentence-ending verb forms
+  - Japanese: morphological analysis (Janome) detects sentence-ending verb forms (including colloquial endings such as `よ`, `ね`, `けど`, `し`, `って`)
   - Other languages: period / exclamation mark / question mark detection (with abbreviation exclusions)
+- Long cue re-splitting at natural boundaries (`max_cue_seconds`, default 15 s)
+- Post-merge splitting of overly long cues (`min_cue_chars`, default 50 chars): splits at all full-width punctuation first; if none, uses morphological analysis to detect sentence-end + sentence-start patterns
+- Automatic misrecognition correction (`replacements`): pre-register proper nouns and technical terms that Whisper tends to mishear
 - Voice-only output (`voice_only=True`): plain `.txt` without timestamps, for adding subtitles to cut-edited video
 
 ## Installation
@@ -90,7 +93,8 @@ transcribe(
     margin_after=0.0,         # seconds to extend end
     silence_threshold=0.001,  # RMS threshold after peak normalization
     merge_sentences=True,     # merge over-split cues into sentence units (default: True)
-    voice_only=False,          # output plain .txt without timestamps (default: False)
+    min_cue_chars=50,         # post-merge: split cues longer than this (0 to disable)
+    voice_only=False,         # output plain .txt without timestamps (default: False)
     verbose=True,
 )
 ```
@@ -144,6 +148,16 @@ When `True` (default), over-split cues produced by WhisperX are merged into natu
 - **Other languages**: Detects `.` / `!` / `?` as sentence boundaries. Common abbreviations (`Mr.`, `Dr.`, `U.S.`, `e.g.`, `etc.`, `...`) are excluded to avoid false splits.
 
 Set `merge_sentences=False` to disable merging and receive the raw WhisperX-aligned cues.
+
+### `min_cue_chars`
+
+After sentence merging, splits any cue whose text exceeds this character count (default: `50`). Cues at or below the threshold are never touched.
+
+**Phase 1 (punctuation)**: If the text contains `。` `！` `？`, splits at every occurrence.
+
+**Phase 2 (morphological analysis)**: If no punctuation is found, uses Janome to detect positions where a sentence-ending token (e.g. `です`, `ます`, `た`, `よ`) is immediately followed by a sentence-starting token (noun, pronoun, interjection, conjunction, etc.).
+
+Set to `0` to disable post-merge splitting entirely.
 
 ### `voice_only`
 
@@ -219,7 +233,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-59 tests covering `vtt_io`, `onset`, `cue_builder`, and `cue_merger` modules.
+88 tests covering `vtt_io`, `onset`, `cue_builder`, and `cue_merger` modules.
 
 ### Manual test with a local audio file
 
