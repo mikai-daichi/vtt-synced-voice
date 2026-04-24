@@ -58,7 +58,7 @@ def merge_cues(
 
     for cue in cues:
         buffer.append(cue)
-        if _contains_sentence_end(cue.text) or is_end(join_sep.join(c.text for c in buffer)):
+        if _contains_sentence_end(cue.text) or is_end(cue.text):
             merged.append(_flush(buffer, len(merged), join_sep))
             buffer = []
 
@@ -264,7 +264,7 @@ def _find_morpheme_split_positions(text: str, min_remaining: int) -> list[int]:
             is_end_tok = True
         elif ps0 == "感動詞":
             is_end_tok = True
-        elif ps0 == "助詞" and ps1 == "終助詞":
+        elif ps0 == "助詞" and "終助詞" in ps1:
             is_end_tok = True
         elif ps0 == "助詞" and ps1 == "接続助詞" and surface in _KEREDO_SURFACES:
             is_end_tok = True
@@ -575,7 +575,8 @@ def _make_ja_detector():
             return True
 
         # 終助詞（よ/ね/な/わ/ぞ/ぜ/さ/か/かな/っけ/もん/じゃん 等）
-        if pos0 == "助詞" and pos1 == "終助詞":
+        # 「か」は Janome で pos1="副助詞／並立助詞／終助詞" になるため "in" で判定
+        if pos0 == "助詞" and "終助詞" in pos1:
             return True
 
         # 接続助詞止め・けど系（けど/けども/が 等）
@@ -602,8 +603,8 @@ def _make_ja_detector():
         if pos0 == "接続詞" and last.surface in _SENTENCE_END_CONJ:
             return True
 
-        # 句点・感嘆符・疑問符で終わる（Whisperが付与した句読点）
-        if pos0 == "記号" and last.surface in {"。", "！", "？"}:
+        # 句点・感嘆符・疑問符・省略記号で終わる（Whisperが付与した句読点）
+        if pos0 == "記号" and last.surface in {"。", "！", "？", "…"}:
             return True
 
         return False

@@ -249,6 +249,36 @@ class TestMergeCuesJapanese:
         result = merge_cues(cues, language="ja")
         assert len(result) == 1
 
+    # --- 省略記号 ---
+
+    def test_ellipsis_is_sentence_end(self):
+        """「…」で終わるキューは文末と判定する。"""
+        cues = [
+            make_cue(0, 0.0, 1.5, "時間がどんどん…"),
+            make_cue(1, 2.0, 3.0, "次に進みます"),
+        ]
+        result = merge_cues(cues, language="ja")
+        assert len(result) == 2
+
+    def test_no_stale_buffer_merge(self):
+        """文末でないキューがバッファに残っていても次の文末キューで誤結合しない。
+
+        バグ再現: 「…」終わりキューがバッファ残留 → 次の「か」終わりキューで
+        バッファ全体がフラッシュされ「皆さん」が分割されていた。
+        """
+        cues = [
+            make_cue(0, 3.4, 5.9, "皆さんテロップ作業で消耗していませんか"),
+            make_cue(1, 7.3, 10.5, "ファイナルカットプロでテロップを打っていると時間がどんどん…"),
+            make_cue(2, 13.5, 15.8, "皆さんテロップ作業で消耗していませんか"),
+            make_cue(3, 17.1, 21.4, "ファイナルカットプロでテロップを打っていると時間がどんどん溶けていきます"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 4
+        assert result[0].text == "皆さんテロップ作業で消耗していませんか"
+        assert result[1].text == "ファイナルカットプロでテロップを打っていると時間がどんどん…"
+        assert result[2].text == "皆さんテロップ作業で消耗していませんか"
+        assert result[3].text == "ファイナルカットプロでテロップを打っていると時間がどんどん溶けていきます"
+
     # --- 句点内部検出 ---
 
     def test_interior_kuten_splits(self):
