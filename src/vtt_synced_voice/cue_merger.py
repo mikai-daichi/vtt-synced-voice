@@ -56,11 +56,24 @@ def merge_cues(
     merged: list[VttCue] = []
     buffer: list[VttCue] = []
 
-    for cue in cues:
+    for i, cue in enumerate(cues):
         buffer.append(cue)
-        if _contains_sentence_end(cue.text) or is_end(cue.text):
-            merged.append(_flush(buffer, len(merged), join_sep))
-            buffer = []
+        joined = join_sep.join(c.text for c in buffer)
+
+        # 文末判定: continuationキューは結合テキストで判定、通常キューは単体で判定
+        if language == "ja" and _is_continuation(cue.text):
+            should_flush = _contains_sentence_end(cue.text) or is_end(joined)
+        else:
+            should_flush = _contains_sentence_end(cue.text) or is_end(cue.text)
+
+        if should_flush:
+            # 次のキューが前の続き（continuation）なら、まだフラッシュしない
+            next_cue = cues[i + 1] if i + 1 < len(cues) else None
+            if language == "ja" and next_cue is not None and _is_continuation(next_cue.text):
+                pass  # バッファに溜め続ける
+            else:
+                merged.append(_flush(buffer, len(merged), join_sep))
+                buffer = []
 
     if buffer:
         merged.append(_flush(buffer, len(merged), join_sep))
@@ -541,6 +554,45 @@ _KEREDO_SURFACES = frozenset({"けど", "けども", "が"})
 _KARA_NODE_SURFACES = frozenset({"から", "ので", "し"})
 _SENTENCE_END_CONJ = frozenset({"なので", "だから", "ですから"})
 _KEREDO_CONJ = frozenset({"けれど", "けれども"})
+
+
+# 先頭に来た場合に「前のキューの続き」と判定する品詞の組み合わせ
+# 係助詞（は・も・しか）は文頭にも来るため除外
+_CONTINUATION_POS = frozenset({
+    ("助動詞", "*"),       # ですよ・うね・ますね・ったので
+    ("助詞", "格助詞"),    # から・て
+    ("助詞", "接続助詞"),  # ても・ながら・ので・のに
+    ("助詞", "副助詞"),    # だけ・ばかり・ほど
+    ("動詞", "非自立"),    # った・ったので・てた
+    ("名詞", "非自立"),    # んです・のは・こと・とき
+    ("記号", "句点"),      # 。
+    ("記号", "読点"),      # 、
+})
+
+
+def _is_continuation(text: str) -> bool:
+    """テキストの先頭トークンが「文頭に来ない品詞」なら True を返す。
+
+    助動詞・助詞（格助詞/接続助詞/副助詞）・非自立語・記号で始まるキューは
+    前のキューの続きと判定し、バッファに溜めて結合テキストで文末再判定する。
+    終助詞・副並終助詞は別途 in 判定で拾う。
+    「う」単体（でしょう/ましょう の末尾が分断されたケース）も含む。
+    """
+    from janome.tokenizer import Tokenizer
+    tokens = list(Tokenizer().tokenize(text))
+    if not tokens:
+        return False
+    first = tokens[0]
+    ps = first.part_of_speech.split(",")
+    ps0 = ps[0]
+    ps1 = ps[1] if len(ps) > 1 else "*"
+    # 終助詞・副助詞／並立助詞／終助詞 は ps1 に "終助詞" を含む
+    if ps0 == "助詞" and "終助詞" in ps1:
+        return True
+    # 「う」単体: でしょう・ましょう の末尾が分断されたケース
+    if ps0 == "感動詞" and first.surface == "う":
+        return True
+    return (ps0, ps1) in _CONTINUATION_POS or (ps0, "*") in _CONTINUATION_POS
 
 
 def _make_ja_detector():

@@ -279,6 +279,59 @@ class TestMergeCuesJapanese:
         assert result[2].text == "皆さんテロップ作業で消耗していませんか"
         assert result[3].text == "ファイナルカットプロでテロップを打っていると時間がどんどん溶けていきます"
 
+    # --- continuation（前キューの続き）マージ ---
+
+    def test_desuyo_merges_with_prev(self):
+        """「ですよ」は前キューの続きとしてマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 1.3, "なかなかできない"),
+            make_cue(1, 1.8, 2.0, "ですよ"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 1
+        assert result[0].text == "なかなかできないですよ"
+
+    def test_continuation_chain_desuyone(self):
+        """「ですよ」「ね」と連続するcontinuationが全てマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 1.3, "なかなかできない"),
+            make_cue(1, 1.8, 2.0, "ですよ"),
+            make_cue(2, 6.4, 6.5, "ね"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 1
+        assert result[0].text == "なかなかできないですよね"
+
+    def test_continuation_u_ne(self):
+        """「うね」（でしょうね の分断）は前キューとマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 2.4, "メンバーの中にいるからこそなんでしょ"),
+            make_cue(1, 2.9, 3.4, "うね"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 1
+        assert result[0].text == "メンバーの中にいるからこそなんでしょうね"
+
+    def test_continuation_tta_node(self):
+        """「ったので」は前キューの続きとしてマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 3.0, "帰識庁だ"),
+            make_cue(1, 3.5, 4.2, "ったので"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 1
+        assert result[0].text == "帰識庁だったので"
+
+    def test_continuation_ka(self):
+        """「か」は前キューの続きとしてマージされる。"""
+        cues = [
+            make_cue(0, 0.0, 2.0, "こっちし"),
+            make_cue(1, 2.5, 2.8, "か"),
+        ]
+        result = merge_cues(cues, language="ja", min_cue_chars=0)
+        assert len(result) == 1
+        assert result[0].text == "こっちしか"
+
     # --- 句点内部検出 ---
 
     def test_interior_kuten_splits(self):
