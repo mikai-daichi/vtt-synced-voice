@@ -25,7 +25,9 @@ _EN_NON_SENTENCE_END_PATTERNS = re.compile(
 )
 
 # 日本語の自然な区切り文字（長キュー分割の候補）
-_JA_SPLIT_CHARS = re.compile(r"[、。！？]|(?<=[よねなわぞぜさか])")
+# 終助詞パターン (?<=[よねなわぞぜさか]) は動詞活用の一部（終わ・なった 等）に
+# 誤マッチして単語の途中を分割点にするため除去。句点・読点のみを候補とする。
+_JA_SPLIT_CHARS = re.compile(r"[、。！？]")
 
 
 def merge_cues(
@@ -72,8 +74,13 @@ def merge_cues(
             if language == "ja" and next_cue is not None and _is_continuation(next_cue.text):
                 pass  # バッファに溜め続ける
             else:
+                # _contains_sentence_end の場合、句点後の断片を次バッファに繰り越す
+                carry: VttCue | None = None
+                if language == "ja" and _contains_sentence_end(cue.text):
+                    cue, carry = _split_cue_at_last_sentence_end(cue)
+                    buffer[-1] = cue
                 merged.append(_flush(buffer, len(merged), join_sep))
-                buffer = []
+                buffer = [carry] if carry is not None else []
 
     if buffer:
         merged.append(_flush(buffer, len(merged), join_sep))
@@ -86,12 +93,62 @@ def merge_cues(
     if language == "ja" and min_cue_chars > 0:
         merged = _split_long_cues_post(merged, min_cue_chars)
 
+    # 末尾断片を次キューに結合（動詞連用形・名詞1文字で終わるキューを前倒し）
+    if language == "ja":
+        merged = _merge_dangling_fragments(merged)
+
     # インデックス振り直し
     if language == "ja":
         for i, c in enumerate(merged):
             c.index = i
 
     return merged
+
+
+def _split_cue_at_last_sentence_end(cue: VttCue) -> tuple[VttCue, VttCue | None]:
+    """キュー内の最後の句点位置でテキストを分割し、(句点まで, 句点以降) を返す。
+
+    句点以降が空白のみなら carry=None を返す（繰り越し不要）。
+    タイムスタンプは文字数比率で線形補間する。
+    """
+    text = cue.text
+    # 最後の句点位置を探す（全角。！？ および 半角!? を対象。英語 . は対象外）
+    last_pos = -1
+    for ch in "。！？!?":
+        pos = text.rfind(ch)
+        if pos > last_pos:
+            last_pos = pos
+
+    if last_pos < 0 or last_pos >= len(text) - 1:
+        return cue, None
+
+    before = text[: last_pos + 1]
+    after = text[last_pos + 1 :]
+
+    if not after.strip():
+        return cue, None
+
+    # タイムスタンプを文字数比で補間
+    ratio = (last_pos + 1) / len(text)
+    split_time = cue.start + (cue.end - cue.start) * ratio
+
+    cue_before = VttCue(
+        index=cue.index,
+        start=cue.start,
+        end=split_time,
+        text=before,
+        original_start=cue.original_start,
+        original_end=split_time,
+    )
+    cue_after = VttCue(
+        index=cue.index,
+        start=split_time,
+        end=cue.end,
+        text=after,
+        original_start=split_time,
+        original_end=cue.original_end,
+    )
+    return cue_before, cue_after
 
 
 def _flush(buffer: list[VttCue], index: int, join_sep: str) -> VttCue:
@@ -554,6 +611,87 @@ _KEREDO_SURFACES = frozenset({"けど", "けども", "が"})
 _KARA_NODE_SURFACES = frozenset({"から", "ので", "し"})
 _SENTENCE_END_CONJ = frozenset({"なので", "だから", "ですから"})
 _KEREDO_CONJ = frozenset({"けれど", "けれども"})
+
+
+def _is_dangling_fragment(text: str) -> bool:
+    """テキストの末尾トークンが「文の途中で切れた断片」なら True を返す。
+
+    以下の2条件のいずれかに該当する場合を断片と判定する:
+    - 動詞/自立 かつ 活用形が連用形・連用タ接続・体言接続特殊（文末にならない活用）
+    - 名詞（一般/固有名詞/サ変接続）かつ 表層が1文字（複合語や単語の途中）
+    """
+    from janome.tokenizer import Tokenizer
+    tokens = list(Tokenizer().tokenize(text))
+    if not tokens:
+        return False
+    last = tokens[-1]
+    ps = last.part_of_speech.split(",")
+    ps0 = ps[0]
+    ps1 = ps[1] if len(ps) > 1 else "*"
+
+    if ps0 == "動詞" and ps1 == "自立":
+        if last.infl_form in ("連用形", "連用タ接続", "体言接続特殊２", "体言接続特殊"):
+            return True
+
+    if (ps0 == "名詞" and ps1 in ("一般", "固有名詞", "サ変接続")
+            and len(last.surface) == 1
+            and last.surface not in "。、！？!?"):
+        return True
+
+    return False
+
+
+def _merge_dangling_fragments(cues: list[VttCue]) -> list[VttCue]:
+    """末尾が断片のキューを次のキューの先頭に結合する後処理パス。
+
+    マージ・再分割後に残った動詞連用形・名詞1文字の末尾断片を
+    次のキューと結合し、単語途中の分断を解消する。
+    連鎖する断片（断片の次もまた断片）も再帰的に処理する。
+    """
+    if len(cues) <= 1:
+        return cues
+
+    result: list[VttCue] = []
+    carry_text: str = ""
+    carry_start: float = 0.0
+    carry_original_start: float = 0.0
+
+    for i, cue in enumerate(cues):
+        text = carry_text + cue.text if carry_text else cue.text
+        start = carry_start if carry_text else cue.start
+        original_start = carry_original_start if carry_text else cue.original_start
+        carry_text = ""
+
+        is_last = (i == len(cues) - 1)
+        if not is_last and _is_dangling_fragment(text):
+            carry_text = text
+            carry_start = start
+            carry_original_start = original_start
+        else:
+            new_cue = VttCue(
+                index=cue.index,
+                start=start,
+                end=cue.end,
+                text=text,
+                original_start=original_start,
+                original_end=cue.original_end,
+            )
+            if hasattr(cue, "_source_cues"):
+                new_cue._source_cues = cue._source_cues
+            result.append(new_cue)
+
+    if carry_text and result:
+        last = result[-1]
+        result[-1] = VttCue(
+            index=last.index,
+            start=last.start,
+            end=last.end,
+            text=last.text + carry_text,
+            original_start=last.original_start,
+            original_end=last.original_end,
+        )
+
+    return result
 
 
 # 先頭に来た場合に「前のキューの続き」と判定する品詞の組み合わせ
